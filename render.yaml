@@ -1,0 +1,33 @@
+# Render Blueprint for the WorkIndia Node API.
+# TypeScript lives in devDependencies, so the build must install them (`--include=dev`).
+# Do not set PORT here — Render injects it. Secrets use sync: false (entered in the dashboard).
+services:
+  - type: web
+    name: workindia-node-api
+    runtime: node
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: API_PREFIX
+        value: /api/v1
+      - key: TRUST_PROXY
+        value: "1"
+      - key: ENABLE_API_DOCS
+        value: "false"
+      - key: STORAGE_PROVIDER
+        value: local
+      - key: STORAGE_LOCAL_ROOT
+        value: ./storage/uploads
+      - key: JWT_EXPIRES_IN
+        value: 1d
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CLIENT_URL
+        sync: false

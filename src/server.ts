@@ -56,26 +56,27 @@ async function startServer(): Promise<void> {
   }
 
   const app = createApp();
-  httpServer = app.listen(env.port);
+  // Render injects PORT. Never hard-code the production port. Bind all interfaces.
+  const PORT = process.env.PORT || 5000;
+  const HOST = '0.0.0.0';
+  httpServer = app.listen(Number(PORT), HOST);
 
   httpServer.on('listening', () => {
     console.log(
-      `[workindia-api] Server running in ${env.nodeEnv} mode on port ${env.port}`,
+      `[workindia-api] Server running in ${env.nodeEnv} mode on ${HOST}:${PORT}`,
     );
     console.log(
-      `[workindia-api] Health: http://localhost:${env.port}${env.apiPrefix}/health`,
+      `[workindia-api] Health: ${env.apiPrefix}/health`,
     );
     if (env.enableApiDocs) {
-      console.log(
-        `[workindia-api] API docs: http://localhost:${env.port}/api/docs`,
-      );
+      console.log('[workindia-api] API docs: /api/docs');
     }
   });
 
   httpServer.on('error', (error: NodeJS.ErrnoException) => {
     if (error.code === 'EADDRINUSE') {
       console.error(
-        `[workindia-api] Port ${env.port} is already in use. Set a free PORT in .env.`,
+        `[workindia-api] Port ${PORT} is already in use. Set a free PORT in .env.`,
       );
     } else {
       console.error('[workindia-api] Server error:', error.message);

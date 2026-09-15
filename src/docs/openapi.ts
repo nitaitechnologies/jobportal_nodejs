@@ -48,15 +48,19 @@ const TAGS: OpenAPIV3.TagObject[] = [
 
 function buildServers(): OpenAPIV3.ServerObject[] {
   const local = `http://localhost:${env.port}`;
-  const servers: OpenAPIV3.ServerObject[] = [
-    { url: local, description: 'Local development' },
-  ];
+  const servers: OpenAPIV3.ServerObject[] = [];
 
   if (env.apiPublicUrl && env.apiPublicUrl !== local) {
     servers.push({
       url: env.apiPublicUrl.replace(/\/$/, ''),
       description: env.isProduction ? 'Production' : 'Configured public API host',
     });
+  }
+
+  if (!env.isProduction) {
+    servers.push({ url: local, description: 'Local development' });
+  } else if (servers.length === 0) {
+    servers.push({ url: '/', description: 'This host' });
   }
 
   if (env.nodeEnv === 'staging' || process.env.STAGING_API_URL) {

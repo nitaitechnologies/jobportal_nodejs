@@ -26,6 +26,11 @@ function parsePositiveInt(key: string, fallback: string): number {
   return value;
 }
 
+/** Strip whitespace and trailing slashes so https://app.example.com/ matches the browser Origin. */
+function normalizeOrigin(origin: string): string {
+  return origin.trim().replace(/\/+$/, '');
+}
+
 const nodeEnv = requireEnv('NODE_ENV', 'development');
 const isProduction = nodeEnv === 'production';
 const jwtSecret = requireEnv('JWT_SECRET');
@@ -42,22 +47,28 @@ if (isProduction) {
   }
 }
 
-const adminClientUrlEarly = process.env.ADMIN_CLIENT_URL?.trim() || '';
+const clientUrlEarly = normalizeOrigin(
+  isProduction ? requireEnv('CLIENT_URL') : requireEnv('CLIENT_URL', 'http://localhost:3000'),
+);
+const adminClientUrlEarly = normalizeOrigin(process.env.ADMIN_CLIENT_URL ?? '');
 const extraCorsOriginsEarly = (process.env.CORS_ORIGINS ?? '')
   .split(',')
-  .map((origin) => origin.trim())
+  .map((origin) => normalizeOrigin(origin))
   .filter(Boolean);
 
 if (isProduction) {
-  const corsCandidates = [
-    requireEnv('CLIENT_URL', ''),
-    adminClientUrlEarly,
-    ...extraCorsOriginsEarly,
-  ].filter(Boolean);
+  const corsCandidates = [clientUrlEarly, adminClientUrlEarly, ...extraCorsOriginsEarly].filter(
+    Boolean,
+  );
   for (const origin of corsCandidates) {
     if (origin.includes('*')) {
       throw new Error(
         'CORS origins must not use wildcards in production (CLIENT_URL, ADMIN_CLIENT_URL, CORS_ORIGINS)',
+      );
+    }
+    if (/(?:localhost|127\.0\.0\.1)/i.test(origin)) {
+      throw new Error(
+        'CORS origins must not use localhost in production (CLIENT_URL, ADMIN_CLIENT_URL, CORS_ORIGINS)',
       );
     }
   }
@@ -70,6 +81,13 @@ const storageLocalRoot = path.resolve(
 
 const adminClientUrl = adminClientUrlEarly;
 const extraCorsOrigins = extraCorsOriginsEarly;
+const mongodbUri = requireEnv('MONGODB_URI');
+
+if (isProduction && /(?:localhost|127\.0\.0\.1)/i.test(mongodbUri)) {
+  throw new Error(
+    'MONGODB_URI must not point at localhost in production (use Atlas or a reachable host)',
+  );
+}
 
 /** Local Next.js (3000) + Vite (5173) origins — development only. */
 const defaultDevCorsOrigins = isProduction
@@ -85,28 +103,28 @@ export const env = {
   nodeEnv,
   port: parsePositiveInt('PORT', '5000'),
   apiPrefix: requireEnv('API_PREFIX', '/api/v1'),
-  clientUrl: requireEnv('CLIENT_URL', 'http://localhost:3000'),
+  clientUrl: clientUrlEarly,
   adminClientUrl,
   corsOrigins: [
-    requireEnv('CLIENT_URL', 'http://localhost:3000'),
+    clientUrlEarly,
     ...(adminClientUrl ? [adminClientUrl] : []),
     ...extraCorsOrigins,
     ...defaultDevCorsOrigins,
   ].filter((origin, index, arr) => arr.indexOf(origin) === index),
-  mongodbUri: requireEnv('MONGODB_URI'),
+  mongodbUri,
   jwtSecret,
   jwtExpiresIn: requireEnv('JWT_EXPIRES_IN', '1d'),
   storageProvider,
   storageLocalRoot,
   /** Absolute multipart ceiling (bytes). */
   uploadMaxBytes: parsePositiveInt('UPLOAD_MAX_BYTES', String(5 * 1024 * 1024)),
-  /** Express trust proxy hop count (0 = disabled). Set 1 behind a single reverse proxy. */
-  trustProxy: parseInt(requireEnv('TRUST_PROXY', '0'), 10),
+  /** Express trust proxy hop count (0 = disabled). Set 1 behind a single reverse proxy (Render). */
+  trustProxy: parseInt(requireEnv('TRUST_PROXY', isProduction ? '1' : '0'), 10),
   authRateLimitWindowMs: parsePositiveInt('AUTH_RATE_LIMIT_WINDOW_MS', String(15 * 60 * 1000)),
   authRateLimitMax: parsePositiveInt('AUTH_RATE_LIMIT_MAX', '20'),
   /**
    * Public base URL for OpenAPI servers (no trailing slash), e.g. https://api.example.com
-   * Optional — local server is always listed.
+   * Optional. Localhost is listed only outside production.
    */
   apiPublicUrl: (process.env.API_PUBLIC_URL ?? '').trim(),
   /**
