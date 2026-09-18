@@ -25,6 +25,10 @@ const candidateSchema = new Schema(
     dateOfBirth: { type: Date },
     gender: { type: String, enum: GENDERS },
     currentLocation: { type: String, trim: true, default: '' },
+    /** Same place catalog as job offices, so distance uses matching coordinates. */
+    placeId: { type: String, trim: true, default: '' },
+    latitude: { type: Number, min: -90, max: 90 },
+    longitude: { type: Number, min: -180, max: 180 },
     preferredLocations: {
       type: [{ type: String, trim: true }],
       default: [],

@@ -147,6 +147,11 @@ export const env = {
   videoMaxBytes: parsePositiveInt('VIDEO_MAX_BYTES', String(2 * 1024 * 1024)),
   /** Max video duration (seconds). Default 40. */
   videoMaxSeconds: parsePositiveInt('VIDEO_MAX_SECONDS', '40'),
+  /**
+   * Google Places. When empty, place search falls back to OpenStreetMap
+   * so job and candidate still share one coordinate source.
+   */
+  googleMapsApiKey: (process.env.GOOGLE_MAPS_API_KEY ?? '').trim(),
   isDevelopment: nodeEnv === 'development',
   isProduction,
 } as const;

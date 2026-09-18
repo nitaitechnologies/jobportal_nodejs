@@ -8,6 +8,10 @@ export interface JobLocationLike {
   country?: string | null;
   area?: string | null;
   displayName?: string | null;
+  address?: string | null;
+  placeId?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface JobLike {
@@ -76,6 +80,10 @@ function mapLocation(location?: JobLocationLike | null) {
     country: location.country ?? '',
     area: location.area ?? '',
     displayName: location.displayName ?? '',
+    address: location.address ?? '',
+    placeId: location.placeId ?? '',
+    latitude: typeof location.latitude === 'number' ? location.latitude : null,
+    longitude: typeof location.longitude === 'number' ? location.longitude : null,
   };
 }
 
@@ -144,6 +152,7 @@ export function mapPublicJob(
   extras?: {
     category?: JobCategorySummary | null;
     company?: JobCompanySummary | null;
+    distanceKm?: number | null;
   },
 ) {
   const core = mapCoreJob(job);
@@ -170,6 +179,7 @@ export function mapPublicJob(
     applicationMethod: core.applicationMethod,
     featured: core.featured,
     urgent: core.urgent,
+    distanceKm: extras?.distanceKm ?? null,
     views: core.views,
     publishedAt: core.publishedAt,
     company: extras?.company
@@ -196,6 +206,10 @@ export interface JobLocationSummary {
   country: string;
   area: string;
   displayName: string;
+  address?: string;
+  placeId?: string;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export function mapPublicJobSummary(
@@ -204,6 +218,7 @@ export function mapPublicJobSummary(
     category?: JobCategorySummary | null;
     company?: JobCompanySummary | null;
     location?: JobLocationSummary | null;
+    distanceKm?: number | null;
   },
 ) {
   return {
@@ -227,6 +242,7 @@ export function mapPublicJobSummary(
     openings: job.openings ?? 1,
     featured: Boolean(job.featured),
     urgent: Boolean(job.urgent),
+    distanceKm: extras?.distanceKm ?? null,
     publishedAt: job.publishedAt ?? null,
     company: extras?.company
       ? {

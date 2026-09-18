@@ -76,6 +76,11 @@ export const jobLocationSchema = new Schema(
     country: { type: String, trim: true, default: '' },
     area: { type: String, trim: true, default: '' },
     displayName: { type: String, trim: true, default: '' },
+    /** Google or shared place id for the office pin. */
+    address: { type: String, trim: true, default: '' },
+    placeId: { type: String, trim: true, default: '' },
+    latitude: { type: Number, min: -90, max: 90 },
+    longitude: { type: Number, min: -180, max: 180 },
   },
   { _id: false },
 );

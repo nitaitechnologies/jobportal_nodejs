@@ -107,6 +107,8 @@ export function resolvePublicSort(
       return { salaryMin: 1, salaryMax: 1, publishedAt: -1 };
     case 'experience_low':
       return { experienceMin: 1, publishedAt: -1 };
+    case 'nearest':
+      return { publishedAt: -1 };
     case 'relevance':
       if (hasKeyword) {
         return { score: { $meta: 'textScore' }, publishedAt: -1 };

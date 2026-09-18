@@ -62,6 +62,7 @@ export const jobCreateSchema = z
     skills: stringListSchema.optional().default([]),
     categoryId: objectIdSchema.optional(),
     locationId: objectIdSchema.optional(),
+    officePlaceId: z.string().trim().min(3).max(300).optional(),
     workMode: z.enum(WORK_MODES),
     employmentType: z.enum(EMPLOYMENT_TYPES),
     experience: experienceSchema.optional(),
@@ -87,6 +88,7 @@ export const jobUpdateSchema = z
     skills: stringListSchema.optional(),
     categoryId: objectIdSchema.nullable().optional(),
     locationId: objectIdSchema.nullable().optional(),
+    officePlaceId: z.string().trim().min(3).max(300).nullable().optional(),
     workMode: z.enum(WORK_MODES).optional(),
     employmentType: z.enum(EMPLOYMENT_TYPES).optional(),
     experience: experienceSchema.optional(),
@@ -148,10 +150,12 @@ export const publicJobQuerySchema = z
     salaryMax: z.coerce.number().min(0).max(100000000).optional(),
     featured: booleanQuerySchema,
     urgent: booleanQuerySchema,
+    lat: z.coerce.number().min(-90).max(90).optional(),
+    lng: z.coerce.number().min(-180).max(180).optional(),
     page: z.coerce.number().int().min(1).optional().default(1),
     limit: z.coerce.number().int().min(1).max(100).optional().default(20),
     sort: z
-      .enum(['latest', 'relevance', 'salary_high', 'salary_low', 'experience_low'])
+      .enum(['latest', 'relevance', 'salary_high', 'salary_low', 'experience_low', 'nearest'])
       .optional()
       .default('latest'),
   })
@@ -177,6 +181,20 @@ export const publicJobQuerySchema = z
         code: 'custom',
         path: ['salaryMin'],
         message: 'salaryMin must be less than or equal to salaryMax',
+      });
+    }
+    if ((value.lat === undefined) !== (value.lng === undefined)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['lat'],
+        message: 'lat and lng must be sent together',
+      });
+    }
+    if (value.sort === 'nearest' && (value.lat === undefined || value.lng === undefined)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['sort'],
+        message: 'nearest sort needs lat and lng',
       });
     }
   })

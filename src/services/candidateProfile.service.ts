@@ -1,4 +1,5 @@
 import { Candidate, type ICandidate } from '../models/Candidate';
+import { placesService } from './places.service';
 import { User } from '../models/User';
 import { HTTP_STATUS } from '../constants';
 import { AppError } from '../utils/AppError';
@@ -112,6 +113,14 @@ export class CandidateProfileService {
       user.avatar = input.avatar;
     }
 
+    if (input.locationPlaceId) {
+      const place = await placesService.resolve(input.locationPlaceId);
+      candidate.currentLocation = place.address;
+      candidate.placeId = place.placeId;
+      candidate.latitude = place.latitude;
+      candidate.longitude = place.longitude;
+    }
+
     const candidateFields: Array<keyof CandidateProfileUpdateInput> = [
       'headline',
       'bio',
@@ -139,6 +148,17 @@ export class CandidateProfileService {
 
     for (const field of candidateFields) {
       if (input[field] === undefined) {
+        continue;
+      }
+
+      if (field === 'currentLocation') {
+        if (input.locationPlaceId) {
+          continue;
+        }
+        candidate.currentLocation = input.currentLocation ?? '';
+        candidate.placeId = '';
+        candidate.set('latitude', undefined);
+        candidate.set('longitude', undefined);
         continue;
       }
 

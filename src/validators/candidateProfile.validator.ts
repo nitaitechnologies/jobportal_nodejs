@@ -150,6 +150,7 @@ export const candidateProfileUpdateSchema = z
     dateOfBirth: z.coerce.date().optional().nullable(),
     gender: z.enum(GENDERS).optional(),
     currentLocation: z.string().trim().max(200).optional(),
+    locationPlaceId: z.string().trim().min(3).max(300).optional(),
     preferredLocations: z
       .array(z.string().trim().min(1).max(120))
       .max(20)

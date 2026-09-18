@@ -30,6 +30,8 @@ import { getEmployerEntitlements, markExpiredJobsForCompany, FREE_ENTITLEMENTS }
 import { trackSafely } from './analytics.service';
 import { settingsService } from './settings.service';
 import { resolveJobExpiresAt } from '../utils/jobListingExpiry';
+import { haversineKm } from '../utils/geo';
+import { placesService, type ResolvedPlace } from './places.service';
 import type {
   EmployerJobQuery,
   JobCreateInput,
@@ -55,6 +57,10 @@ type JobDocument = mongoose.Document & {
     country?: string;
     area?: string;
     displayName?: string;
+    address?: string;
+    placeId?: string;
+    latitude?: number;
+    longitude?: number;
   };
   workMode: string;
   employmentType: string;
@@ -85,12 +91,16 @@ type JobDocument = mongoose.Document & {
 };
 
 interface LocationSnapshot {
-  locationId: mongoose.Types.ObjectId;
+  locationId?: mongoose.Types.ObjectId;
   city: string;
   state: string;
   country: string;
   area: string;
   displayName: string;
+  address: string;
+  placeId: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 const PUBLISH_READY_STATUSES: JobStatus[] = ['draft', 'pending'];
@@ -184,6 +194,57 @@ async function buildLocationSnapshot(locationId: string): Promise<LocationSnapsh
     country,
     area,
     displayName: names.join(', '),
+    address: '',
+    placeId: '',
+    latitude: typeof location.latitude === 'number' ? location.latitude : undefined,
+    longitude: typeof location.longitude === 'number' ? location.longitude : undefined,
+  };
+}
+
+function emptyOfficeLocation(): LocationSnapshot {
+  return {
+    city: '',
+    state: '',
+    country: '',
+    area: '',
+    displayName: '',
+    address: '',
+    placeId: '',
+  };
+}
+
+function officeFromJob(job: JobDocument): LocationSnapshot {
+  const location = job.location;
+  return {
+    locationId: location?.locationId ?? undefined,
+    city: location?.city ?? '',
+    state: location?.state ?? '',
+    country: location?.country ?? '',
+    area: location?.area ?? '',
+    displayName: location?.displayName ?? '',
+    address: location?.address ?? '',
+    placeId: location?.placeId ?? '',
+    latitude: location?.latitude,
+    longitude: location?.longitude,
+  };
+}
+
+async function withOffice(
+  snapshot: LocationSnapshot,
+  placeId: string,
+): Promise<LocationSnapshot> {
+  const place: ResolvedPlace = await placesService.resolve(placeId);
+  return {
+    ...snapshot,
+    address: place.address,
+    placeId: place.placeId,
+    latitude: place.latitude,
+    longitude: place.longitude,
+    city: snapshot.city || place.city,
+    state: snapshot.state || place.state,
+    country: snapshot.country || place.country || 'India',
+    area: snapshot.area || place.area,
+    displayName: snapshot.displayName || place.address,
   };
 }
 
@@ -343,6 +404,10 @@ function toLocationSummary(
       country?: string | null;
       area?: string | null;
       displayName?: string | null;
+      address?: string | null;
+      placeId?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
     } | null;
   },
   locationMap: Map<string, { name: string; slug: string; type: string }>,
@@ -363,6 +428,10 @@ function toLocationSummary(
     country: snapshot.country ?? '',
     area: snapshot.area ?? '',
     displayName: snapshot.displayName ?? meta?.name ?? '',
+    address: snapshot.address ?? '',
+    placeId: snapshot.placeId ?? '',
+    latitude: typeof snapshot.latitude === 'number' ? snapshot.latitude : null,
+    longitude: typeof snapshot.longitude === 'number' ? snapshot.longitude : null,
   };
 }
 
@@ -405,8 +474,14 @@ function assertPublishReady(job: JobDocument): void {
   if (!job.categoryId) {
     errors.push({ path: 'categoryId', message: 'Category is required to publish' });
   }
-  if (!job.location?.locationId) {
+  if (!job.location?.locationId && job.workMode !== 'remote') {
     errors.push({ path: 'locationId', message: 'Location is required to publish' });
+  }
+  if (job.workMode !== 'remote' && typeof job.location?.latitude !== 'number') {
+    errors.push({
+      path: 'officePlaceId',
+      message: 'Office address is required to publish an on-site or hybrid job',
+    });
   }
   if (!job.workMode) {
     errors.push({ path: 'workMode', message: 'Work mode is required' });
@@ -514,6 +589,8 @@ function applyEditableFields(
       country: '',
       area: '',
       displayName: '',
+      address: '',
+      placeId: '',
     };
   }
 }
@@ -543,6 +620,9 @@ export class JobService {
     let location: LocationSnapshot | undefined;
     if (input.locationId) {
       location = await buildLocationSnapshot(input.locationId);
+    }
+    if (input.officePlaceId) {
+      location = await withOffice(location ?? emptyOfficeLocation(), input.officePlaceId);
     }
 
     if (input.deadline && input.deadline.getTime() <= Date.now()) {
@@ -697,8 +777,24 @@ export class JobService {
     let location: LocationSnapshot | null | undefined;
     if (input.locationId) {
       location = await buildLocationSnapshot(input.locationId);
+      if (input.officePlaceId === undefined && job.location?.placeId) {
+        location = await withOffice(location, job.location.placeId);
+      }
     } else if (input.locationId === null) {
       location = null;
+    }
+    if (input.officePlaceId) {
+      const base = location === null ? emptyOfficeLocation() : (location ?? officeFromJob(job));
+      location = await withOffice(base, input.officePlaceId);
+    } else if (input.officePlaceId === null && location !== null) {
+      const base = location ?? officeFromJob(job);
+      location = {
+        ...base,
+        address: '',
+        placeId: '',
+        latitude: undefined,
+        longitude: undefined,
+      };
     }
 
     if (input.deadline && input.deadline.getTime() <= Date.now()) {
@@ -1005,16 +1101,38 @@ export class JobService {
 
     const sort = resolvePublicSort(query.sort, hasKeyword);
     const skip = (page - 1) * limit;
+    const origin =
+      query.lat !== undefined && query.lng !== undefined
+        ? { latitude: query.lat, longitude: query.lng }
+        : null;
 
-    let findQuery = Job.find(filter).sort(sort).skip(skip).limit(limit);
-    if (hasKeyword && query.sort === 'relevance') {
-      findQuery = findQuery.select({ score: { $meta: 'textScore' } });
+    let items;
+    if (query.sort === 'nearest' && origin) {
+      const pool = await Job.find(filter).limit(300);
+      items = pool
+        .map((item) => ({
+          item,
+          distance:
+            typeof item.location?.latitude === 'number' &&
+            typeof item.location.longitude === 'number'
+              ? haversineKm(origin, {
+                  latitude: item.location.latitude,
+                  longitude: item.location.longitude,
+                })
+              : Number.POSITIVE_INFINITY,
+        }))
+        .sort((left, right) => left.distance - right.distance)
+        .slice(skip, skip + limit)
+        .map((row) => row.item);
+    } else {
+      let findQuery = Job.find(filter).sort(sort).skip(skip).limit(limit);
+      if (hasKeyword && query.sort === 'relevance') {
+        findQuery = findQuery.select({ score: { $meta: 'textScore' } });
+      }
+      items = await findQuery;
     }
 
-    const [items, total] = await Promise.all([
-      findQuery,
-      Job.countDocuments(filter),
-    ]);
+    const total = await Job.countDocuments(filter);
 
     const categoryMap = await loadCategoryMap(
       items
@@ -1036,6 +1154,15 @@ export class JobService {
             : null,
           company: companyMap.get(item.companyId.toString()) ?? null,
           location: toLocationSummary(item, locationMap),
+          distanceKm:
+            origin &&
+            typeof item.location?.latitude === 'number' &&
+            typeof item.location.longitude === 'number'
+              ? haversineKm(origin, {
+                  latitude: item.location.latitude,
+                  longitude: item.location.longitude,
+                })
+              : null,
         }),
       ),
       pagination: {
