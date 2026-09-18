@@ -1,14 +1,24 @@
 import path from 'path';
 import { HTTP_STATUS } from '../constants';
+import { env } from '../config/env';
 import {
   BLOCKED_EXTENSIONS,
   MEDIA_ALLOWED_EXTENSIONS,
   MEDIA_ALLOWED_MIME,
   MEDIA_CATEGORIES,
   MEDIA_MAX_BYTES,
+  isVideoMediaCategory,
   type MediaCategory,
 } from '../constants/media';
 import { AppError } from './AppError';
+
+/** Effective max bytes — video categories honor VIDEO_MAX_BYTES from env. */
+export function getMediaMaxBytes(category: MediaCategory): number {
+  if (isVideoMediaCategory(category)) {
+    return env.videoMaxBytes;
+  }
+  return MEDIA_MAX_BYTES[category];
+}
 
 function detectMimeFromMagic(buffer: Buffer): string | null {
   if (buffer.length < 12) return null;
@@ -39,6 +49,21 @@ function detectMimeFromMagic(buffer: Buffer): string | null {
     buffer.subarray(8, 12).toString('ascii') === 'WEBP'
   ) {
     return 'image/webp';
+  }
+
+  // WebM / Matroska EBML header
+  if (
+    buffer[0] === 0x1a &&
+    buffer[1] === 0x45 &&
+    buffer[2] === 0xdf &&
+    buffer[3] === 0xa3
+  ) {
+    return 'video/webm';
+  }
+
+  // MP4 / ISO BMFF: ....ftyp
+  if (buffer.subarray(4, 8).toString('ascii') === 'ftyp') {
+    return 'video/mp4';
   }
 
   return null;
@@ -81,9 +106,11 @@ export function validateUploadedFile(input: {
   declaredMime: string;
   buffer: Buffer;
   size: number;
+  /** Required for video categories (client-declared; clients must measure before upload). */
+  durationSeconds?: number;
 }): ValidatedUploadFile {
   const category = input.category;
-  const max = MEDIA_MAX_BYTES[category];
+  const max = getMediaMaxBytes(category);
   if (!input.buffer?.length || input.size <= 0) {
     throw new AppError('Empty file is not allowed', HTTP_STATUS.BAD_REQUEST);
   }
@@ -94,6 +121,26 @@ export function validateUploadedFile(input: {
         message: `Maximum size for ${category} is ${Math.round(max / (1024 * 1024))}MB`,
       },
     ]);
+  }
+
+  if (isVideoMediaCategory(category)) {
+    const duration = input.durationSeconds;
+    if (typeof duration !== 'number' || !Number.isFinite(duration) || duration < 0) {
+      throw new AppError('Video duration is required', HTTP_STATUS.BAD_REQUEST, [
+        {
+          path: 'durationSeconds',
+          message: 'Provide durationSeconds for video uploads',
+        },
+      ]);
+    }
+    if (duration > env.videoMaxSeconds) {
+      throw new AppError('Video too long', HTTP_STATUS.BAD_REQUEST, [
+        {
+          path: 'durationSeconds',
+          message: `Maximum duration is ${env.videoMaxSeconds} seconds`,
+        },
+      ]);
+    }
   }
 
   const originalName = sanitizeOriginalName(input.originalName);
@@ -136,7 +183,11 @@ export function validateUploadedFile(input: {
     // Allow jpeg aliases
     const jpegFamily =
       detected === 'image/jpeg' && (declared === 'image/jpg' || declared === 'image/pjpeg');
-    if (!jpegFamily) {
+    // Allow video/quicktime declared as mp4 container sometimes
+    const mp4Family =
+      detected === 'video/mp4' &&
+      (declared === 'video/quicktime' || declared === 'application/mp4');
+    if (!jpegFamily && !mp4Family) {
       throw new AppError('MIME type mismatch', HTTP_STATUS.BAD_REQUEST, [
         {
           path: 'file',
@@ -152,6 +203,8 @@ export function validateUploadedFile(input: {
     'image/png': ['.png'],
     'image/webp': ['.webp'],
     'application/pdf': ['.pdf'],
+    'video/mp4': ['.mp4', '.mov', '.m4v'],
+    'video/webm': ['.webm'],
   };
   if (!(extForMime[detected] ?? []).includes(extension)) {
     throw new AppError('Extension does not match file contents', HTTP_STATUS.BAD_REQUEST);

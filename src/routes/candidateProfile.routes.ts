@@ -3,6 +3,7 @@ import { candidateProfileController } from '../controllers/candidateProfile.cont
 import { mediaController } from '../controllers/media.controller';
 import { authenticate } from '../middlewares/auth.middleware';
 import { requireCandidate } from '../middlewares/candidateAuth.middleware';
+import { requireVideoResumeEnabled } from '../middlewares/featureFlag.middleware';
 import { requireRole } from '../middlewares/role.middleware';
 import { uploadSingle } from '../middlewares/upload.middleware';
 import {
@@ -59,6 +60,31 @@ candidateProfileRouter.get('/resume/download', (req, res, next) => {
 
 candidateProfileRouter.delete('/resume', (req, res, next) => {
   void mediaController.deleteCandidateResume(req, res, next);
+});
+
+candidateProfileRouter.post(
+  '/video-resume',
+  requireVideoResumeEnabled,
+  uploadSingle('file'),
+  (req, res, next) => {
+    void mediaController.uploadCandidateVideoResume(req, res, next);
+  },
+);
+
+candidateProfileRouter.get('/video-resume', requireVideoResumeEnabled, (req, res, next) => {
+  void mediaController.getCandidateVideoResume(req, res, next);
+});
+
+candidateProfileRouter.get(
+  '/video-resume/download',
+  requireVideoResumeEnabled,
+  (req, res, next) => {
+    void mediaController.downloadCandidateVideoResume(req, res, next);
+  },
+);
+
+candidateProfileRouter.delete('/video-resume', requireVideoResumeEnabled, (req, res, next) => {
+  void mediaController.deleteCandidateVideoResume(req, res, next);
 });
 
 candidateProfileRouter.post('/skills', validateSkillCreate, (req, res, next) => {

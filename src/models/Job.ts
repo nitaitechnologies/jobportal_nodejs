@@ -41,6 +41,8 @@ const jobSchema = new Schema(
       trim: true,
       maxlength: 20000,
     },
+    /** Public media URL or media: ref for short video JD (max 2MB / 40s when enabled). */
+    videoJd: { type: String, trim: true, default: '' },
     responsibilities: {
       type: [{ type: String, trim: true }],
       default: [],

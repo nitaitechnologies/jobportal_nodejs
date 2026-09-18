@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import { jobController } from '../controllers/job.controller';
+import { mediaController } from '../controllers/media.controller';
 import { authenticate } from '../middlewares/auth.middleware';
 import { requireEmployer } from '../middlewares/employerAuth.middleware';
+import { requireVideoJdEnabled } from '../middlewares/featureFlag.middleware';
 import { validateObjectIdParam } from '../middlewares/objectIdParam.middleware';
 import { requireRole } from '../middlewares/role.middleware';
+import { uploadSingle } from '../middlewares/upload.middleware';
 import {
   validateEmployerJobQuery,
   validateJobCreate,
@@ -42,6 +45,25 @@ employerJobRouter.patch(
 employerJobRouter.delete('/:id', validateObjectIdParam('id'), (req, res, next) => {
   void jobController.remove(req, res, next);
 });
+
+employerJobRouter.post(
+  '/:id/video-jd',
+  validateObjectIdParam('id'),
+  requireVideoJdEnabled,
+  uploadSingle('file'),
+  (req, res, next) => {
+    void mediaController.uploadJobVideoJd(req, res, next);
+  },
+);
+
+employerJobRouter.delete(
+  '/:id/video-jd',
+  validateObjectIdParam('id'),
+  requireVideoJdEnabled,
+  (req, res, next) => {
+    void mediaController.deleteJobVideoJd(req, res, next);
+  },
+);
 
 employerJobRouter.patch('/:id/publish', validateObjectIdParam('id'), (req, res, next) => {
   void jobController.publish(req, res, next);

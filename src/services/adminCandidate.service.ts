@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { HTTP_STATUS } from '../constants';
+import { env } from '../config/env';
 import { Candidate } from '../models/Candidate';
 import { User } from '../models/User';
 import type { AuthenticatedAdmin } from '../types/auth.types';
@@ -126,6 +127,7 @@ export class AdminCandidateService {
         educationCount: candidate.education?.length ?? 0,
         experienceCount: candidate.workExperience?.length ?? 0,
         hasResume: Boolean(candidate.resume?.trim()),
+        hasVideoResume: env.enableVideoResume && Boolean(candidate.videoResume?.trim()),
       },
     };
   }

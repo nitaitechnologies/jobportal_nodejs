@@ -23,7 +23,7 @@ const mediaFileSchema = new Schema(
     },
     entityType: {
       type: String,
-      enum: ['candidate', 'user', 'company', 'article'],
+      enum: ['candidate', 'user', 'company', 'article', 'job', 'application'],
       required: true,
     },
     entityId: {

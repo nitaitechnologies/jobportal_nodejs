@@ -135,6 +135,18 @@ export const env = {
     process.env.ENABLE_API_DOCS !== undefined
       ? process.env.ENABLE_API_DOCS === 'true' || process.env.ENABLE_API_DOCS === '1'
       : !isProduction,
+  /**
+   * Video JD / video resume (product). Default off until clients are ready.
+   * Exposed on candidate + employer /me as features.videoJdEnabled / videoResumeEnabled.
+   */
+  enableVideoJd:
+    process.env.ENABLE_VIDEO_JD === 'true' || process.env.ENABLE_VIDEO_JD === '1',
+  enableVideoResume:
+    process.env.ENABLE_VIDEO_RESUME === 'true' || process.env.ENABLE_VIDEO_RESUME === '1',
+  /** Max video upload size (bytes). Default 2MB. */
+  videoMaxBytes: parsePositiveInt('VIDEO_MAX_BYTES', String(2 * 1024 * 1024)),
+  /** Max video duration (seconds). Default 40. */
+  videoMaxSeconds: parsePositiveInt('VIDEO_MAX_SECONDS', '40'),
   isDevelopment: nodeEnv === 'development',
   isProduction,
 } as const;

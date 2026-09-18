@@ -17,7 +17,7 @@ export interface UploadMediaInput {
   category: MediaCategory;
   ownerUserId: string;
   ownerType: 'candidate' | 'employer' | 'admin';
-  entityType: 'candidate' | 'user' | 'company' | 'article';
+  entityType: 'candidate' | 'user' | 'company' | 'article' | 'job' | 'application';
   entityId: string;
   originalName: string;
   declaredMime: string;
@@ -25,6 +25,8 @@ export interface UploadMediaInput {
   size: number;
   /** Previous domain field value (URL or media:id) for cleanup. */
   previousRef?: string | null;
+  /** Client-declared video duration in seconds (enforced for video categories). */
+  durationSeconds?: number;
 }
 
 function buildStorageKey(category: MediaCategory, extension: string): string {
@@ -69,6 +71,7 @@ export async function uploadMedia(input: UploadMediaInput) {
     declaredMime: input.declaredMime,
     buffer: input.buffer,
     size: input.size,
+    durationSeconds: input.durationSeconds,
   });
 
   const storage = getStorageAdapter();

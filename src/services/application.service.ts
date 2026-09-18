@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { HTTP_STATUS } from '../constants';
 import type { ApplicationStatus } from '../constants/enums';
+import { env } from '../config/env';
 import { Application } from '../models/Application';
 import { Candidate } from '../models/Candidate';
 import { Category } from '../models/Category';
@@ -207,6 +208,41 @@ async function resolveApplyResume(
   return requested;
 }
 
+async function resolveApplyVideoResume(
+  candidateUserId: string,
+  candidateVideoResume: string | null | undefined,
+  inputVideoResume?: string,
+): Promise<string> {
+  const { env } = await import('../config/env.js');
+  if (!env.enableVideoResume) return '';
+
+  const fallback = candidateVideoResume?.trim() ?? '';
+  const requested = inputVideoResume?.trim() ?? '';
+  if (!requested) return fallback;
+
+  if (requested.startsWith('media:')) {
+    const mediaId = requested.slice('media:'.length);
+    if (!mongoose.Types.ObjectId.isValid(mediaId)) {
+      throw new AppError('Invalid video resume reference', HTTP_STATUS.BAD_REQUEST);
+    }
+    const { MediaFile } = await import('../models/MediaFile.js');
+    const media = await MediaFile.findById(mediaId).select(
+      'ownerUserId category visibility status',
+    );
+    if (
+      !media ||
+      media.status !== 'active' ||
+      media.ownerUserId.toString() !== candidateUserId ||
+      media.category !== 'candidate_video_resume'
+    ) {
+      throw new AppError('Video resume reference is not allowed', HTTP_STATUS.FORBIDDEN);
+    }
+    return `media:${mediaId}`;
+  }
+
+  throw new AppError('Invalid video resume reference', HTTP_STATUS.BAD_REQUEST);
+}
+
 async function loadEmployerCandidateView(candidateId: mongoose.Types.ObjectId) {
   const candidate = await Candidate.findById(candidateId);
   if (!candidate) {
@@ -228,6 +264,7 @@ async function loadEmployerCandidateView(candidateId: mongoose.Types.ObjectId) {
     workExperience: candidate.workExperience ?? [],
     resume: redactResumeForEmployer(candidate.resume),
     hasResume: Boolean(candidate.resume?.trim()),
+    hasVideoResume: env.enableVideoResume && Boolean((candidate.videoResume ?? '').trim()),
     portfolio: candidate.portfolio ?? '',
     expectedSalary: candidate.expectedSalary ?? null,
     noticePeriod: candidate.noticePeriod ?? 0,
@@ -273,6 +310,11 @@ export class ApplicationService {
       candidateDoc.resume,
       input.resume,
     );
+    const videoResume = await resolveApplyVideoResume(
+      candidate.userId,
+      candidateDoc.videoResume,
+      input.videoResume,
+    );
 
     try {
       const application = await Application.create({
@@ -281,6 +323,7 @@ export class ApplicationService {
         employerId: job.employerId,
         companyId: job.companyId,
         resume,
+        videoResume,
         coverLetter: input.coverLetter ?? '',
         answers: input.answers ?? [],
         status: 'applied',

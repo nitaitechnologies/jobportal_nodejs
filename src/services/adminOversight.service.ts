@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { HTTP_STATUS } from '../constants';
+import { env } from '../config/env';
 import { Application } from '../models/Application';
 import { Candidate } from '../models/Candidate';
 import { Company } from '../models/Company';
@@ -119,6 +120,7 @@ export class AdminOversightService {
         coverLetter: application.coverLetter ?? '',
         resume: application.resume ? '[provided]' : '',
         hasResume: Boolean(application.resume?.trim()),
+        hasVideoResume: env.enableVideoResume && Boolean(application.videoResume?.trim()),
         source: application.source ?? '',
         appliedAt: application.appliedAt ?? null,
         createdAt: application.createdAt ?? null,

@@ -9,6 +9,7 @@ import type {
   CandidateLoginInput,
   CandidateRegisterInput,
 } from '../validators/candidateAuth.validator';
+import { getFeatureFlags } from '../utils/featureFlags';
 import { trackSafely } from './analytics.service';
 
 const INVALID_CREDENTIALS = 'Invalid email or password';
@@ -27,6 +28,16 @@ export interface CandidateAuthResult {
     profileCompletion: number;
     profileVisibility?: string;
   };
+  features: {
+    videoJdEnabled: boolean;
+    videoResumeEnabled: boolean;
+    videoMaxBytes: number;
+    videoMaxSeconds: number;
+  };
+}
+
+function withFeatures<T extends object>(payload: T): T & { features: CandidateAuthResult['features'] } {
+  return { ...payload, features: getFeatureFlags() };
 }
 
 export class CandidateAuthService {
@@ -67,7 +78,7 @@ export class CandidateAuthService {
         role: 'candidate',
       });
 
-      return {
+      return withFeatures({
         accessToken,
         user: {
           id: user._id.toString(),
@@ -80,7 +91,7 @@ export class CandidateAuthService {
           id: candidate._id.toString(),
           profileCompletion: candidate.profileCompletion ?? 0,
         },
-      };
+      });
     } catch (error) {
       if (createdUserId) {
         await User.deleteOne({ _id: createdUserId }).catch(() => undefined);
@@ -139,7 +150,7 @@ export class CandidateAuthService {
       candidateId: candidate._id,
     });
 
-    return {
+    return withFeatures({
       accessToken,
       user: {
         id: user._id.toString(),
@@ -152,7 +163,7 @@ export class CandidateAuthService {
         id: candidate._id.toString(),
         profileCompletion: candidate.profileCompletion ?? 0,
       },
-    };
+    });
   }
 
   async getProfile(userId: string): Promise<Omit<CandidateAuthResult, 'accessToken'>> {
@@ -169,7 +180,7 @@ export class CandidateAuthService {
       throw new AppError('Candidate access denied', HTTP_STATUS.FORBIDDEN);
     }
 
-    return {
+    return withFeatures({
       user: {
         id: user._id.toString(),
         name: user.name,
@@ -182,7 +193,7 @@ export class CandidateAuthService {
         profileCompletion: candidate.profileCompletion ?? 0,
         profileVisibility: candidate.profileVisibility,
       },
-    };
+    });
   }
 }
 

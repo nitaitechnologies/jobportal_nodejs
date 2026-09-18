@@ -3,6 +3,7 @@ import { User } from '../models/User';
 import { HTTP_STATUS } from '../constants';
 import type { AdminRole } from '../constants/enums';
 import { AppError } from '../utils/AppError';
+import { getFeatureFlags, type FeatureFlags } from '../utils/featureFlags';
 import { comparePassword } from '../utils/password';
 import { signAccessToken } from '../utils/jwt';
 import type { AdminLoginInput } from '../validators/adminAuth.validator';
@@ -18,6 +19,7 @@ export interface AdminLoginResult {
     email: string;
     role: AdminRole;
   };
+  features: FeatureFlags;
 }
 
 export interface AdminProfileResult {
@@ -30,6 +32,11 @@ export interface AdminProfileResult {
     permissions: string[];
     status: string;
   };
+  features: FeatureFlags;
+}
+
+function withFeatures<T extends object>(payload: T): T & { features: FeatureFlags } {
+  return { ...payload, features: getFeatureFlags() };
 }
 
 export class AdminAuthService {
@@ -76,7 +83,7 @@ export class AdminAuthService {
       entityId: user._id,
     });
 
-    return {
+    return withFeatures({
       accessToken,
       admin: {
         id: adminUser._id.toString(),
@@ -84,7 +91,7 @@ export class AdminAuthService {
         email: user.email,
         role: adminUser.role,
       },
-    };
+    });
   }
 
   async getProfile(adminUserId: string, userId: string): Promise<AdminProfileResult> {
@@ -101,7 +108,7 @@ export class AdminAuthService {
       throw new AppError('Admin access denied', HTTP_STATUS.FORBIDDEN);
     }
 
-    return {
+    return withFeatures({
       admin: {
         id: adminUser._id.toString(),
         userId: user._id.toString(),
@@ -111,7 +118,7 @@ export class AdminAuthService {
         permissions: adminUser.permissions ?? [],
         status: adminUser.status,
       },
-    };
+    });
   }
 }
 

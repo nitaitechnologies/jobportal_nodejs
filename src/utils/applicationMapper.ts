@@ -1,4 +1,5 @@
 import type { Types } from 'mongoose';
+import { env } from '../config/env';
 
 export interface ApplicationLike {
   _id: Types.ObjectId | { toString(): string };
@@ -7,6 +8,7 @@ export interface ApplicationLike {
   employerId: Types.ObjectId | { toString(): string };
   companyId: Types.ObjectId | { toString(): string };
   resume?: string | null;
+  videoResume?: string | null;
   coverLetter?: string | null;
   answers?: Array<{ question: string; answer?: string }>;
   status?: string;
@@ -28,12 +30,14 @@ export function mapCandidateApplication(
     company?: Record<string, unknown> | null;
   },
 ) {
+  const videoRaw = application.videoResume ?? '';
   return {
     id: application._id.toString(),
     jobId: application.jobId.toString(),
     status: application.status,
     coverLetter: application.coverLetter ?? '',
     resume: application.resume ?? '',
+    hasVideoResume: env.enableVideoResume && Boolean(videoRaw.trim()),
     answers: application.answers ?? [],
     appliedAt: application.appliedAt ?? application.createdAt ?? null,
     createdAt: application.createdAt,
@@ -55,6 +59,7 @@ export function mapEmployerApplication(
     resumeRaw.startsWith('media:') || (resumeRaw && !/^https?:\/\//i.test(resumeRaw))
       ? '[resume on file]'
       : resumeRaw;
+  const videoRaw = application.videoResume ?? '';
 
   return {
     id: application._id.toString(),
@@ -64,6 +69,7 @@ export function mapEmployerApplication(
     coverLetter: application.coverLetter ?? '',
     resume,
     hasResume: Boolean(resumeRaw.trim()),
+    hasVideoResume: env.enableVideoResume && Boolean(videoRaw.trim()),
     answers: application.answers ?? [],
     appliedAt: application.appliedAt ?? application.createdAt ?? null,
     viewedAt: application.viewedAt ?? null,

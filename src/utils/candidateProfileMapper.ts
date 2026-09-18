@@ -1,4 +1,5 @@
 import type { Document } from 'mongoose';
+import { env } from '../config/env';
 import type { ICandidate } from '../models/Candidate';
 import type { IUser } from '../models/User';
 import {
@@ -47,6 +48,11 @@ export function mapSafeCandidateProfile(candidate: CandidateDoc) {
       if (value.startsWith('media:')) return '[stored]';
       return value;
     })(),
+    hasVideoResume: env.enableVideoResume
+      ? Boolean(
+          ((candidate as CandidateDoc & { videoResume?: string }).videoResume ?? '').trim(),
+        )
+      : false,
     portfolio: candidate.portfolio ?? '',
     socialLinks: candidate.socialLinks ?? {},
     profileVisibility: candidate.profileVisibility ?? 'public',
@@ -61,6 +67,14 @@ export function mapResumeMetadata(candidate: CandidateDoc) {
   return {
     resume: isPrivateMedia ? null : resume,
     hasResume,
+  };
+}
+
+export function mapVideoResumeMetadata(candidate: CandidateDoc) {
+  const videoResume = (candidate as CandidateDoc & { videoResume?: string }).videoResume ?? '';
+  const hasVideoResume = videoResume.trim().length > 0;
+  return {
+    hasVideoResume,
   };
 }
 

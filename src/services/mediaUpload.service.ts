@@ -1,8 +1,10 @@
 import { HTTP_STATUS } from '../constants';
 import { env } from '../config/env';
+import { Application } from '../models/Application';
 import { Candidate } from '../models/Candidate';
 import { CareerArticle } from '../models/CareerArticle';
 import { Company } from '../models/Company';
+import { Job } from '../models/Job';
 import { User } from '../models/User';
 import type {
   AuthenticatedAdmin,
@@ -11,7 +13,7 @@ import type {
 } from '../types/auth.types';
 import { AppError } from '../utils/AppError';
 import { getCandidateProfileCompletionDetails } from '../utils/candidateProfileCompletion';
-import { mapResumeMetadata } from '../utils/candidateProfileMapper';
+import { mapResumeMetadata, mapVideoResumeMetadata } from '../utils/candidateProfileMapper';
 import { mapSafeMedia, parseMediaRef } from '../utils/mediaMapper';
 import {
   deleteMediaByRef,
@@ -20,6 +22,31 @@ import {
   readMediaBuffer,
   uploadMedia,
 } from './media.service';
+
+function parseDurationSeconds(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const n = typeof raw === 'number' ? raw : Number(String(raw));
+  if (!Number.isFinite(n) || n < 0) {
+    throw new AppError('Invalid durationSeconds', HTTP_STATUS.BAD_REQUEST, [
+      { path: 'durationSeconds', message: 'Must be a non-negative number' },
+    ]);
+  }
+  return n;
+}
+
+/** Videos require durationSeconds — omit → undefined so validator rejects. */
+function requireVideoDurationSeconds(raw: unknown): number {
+  const parsed = parseDurationSeconds(raw);
+  if (parsed === undefined) {
+    throw new AppError('Video duration is required', HTTP_STATUS.BAD_REQUEST, [
+      {
+        path: 'durationSeconds',
+        message: 'Provide durationSeconds for video uploads',
+      },
+    ]);
+  }
+  return parsed;
+}
 
 async function loadCandidatePair(userId: string) {
   const [user, candidate] = await Promise.all([
@@ -189,6 +216,253 @@ export class MediaUploadService {
     };
   }
 
+  async uploadCandidateVideoResume(
+    candidate: AuthenticatedCandidate,
+    file: Express.Multer.File,
+    durationSecondsRaw?: unknown,
+  ) {
+    const { candidate: candidateDoc } = await loadCandidatePair(candidate.userId);
+    const previous = candidateDoc.videoResume ?? '';
+    const durationSeconds = requireVideoDurationSeconds(durationSecondsRaw);
+
+    const uploaded = await uploadMedia({
+      category: 'candidate_video_resume',
+      ownerUserId: candidate.userId,
+      ownerType: 'candidate',
+      entityType: 'candidate',
+      entityId: candidate.candidateId,
+      originalName: file.originalname,
+      declaredMime: file.mimetype,
+      buffer: file.buffer,
+      size: file.size,
+      previousRef: previous,
+      durationSeconds,
+    });
+
+    candidateDoc.videoResume = uploaded.domainRef;
+    await candidateDoc.save();
+
+    return {
+      videoResume: {
+        hasVideoResume: true,
+        media: uploaded.media,
+        downloadUrl: `${env.apiPrefix}/candidate/profile/video-resume/download`,
+        maxSeconds: env.videoMaxSeconds,
+        maxBytes: env.videoMaxBytes,
+      },
+    };
+  }
+
+  async getCandidateVideoResume(candidate: AuthenticatedCandidate) {
+    const { candidate: candidateDoc } = await loadCandidatePair(candidate.userId);
+    const mediaId = parseMediaRef(candidateDoc.videoResume);
+    let media = null;
+    if (mediaId) {
+      try {
+        const doc = await getActiveMediaById(mediaId);
+        media = mapSafeMedia(doc);
+      } catch {
+        media = null;
+      }
+    }
+
+    const stored = hasStoredMedia(candidateDoc.videoResume);
+    return {
+      videoResume: {
+        hasVideoResume: stored,
+        media,
+        downloadUrl: stored
+          ? `${env.apiPrefix}/candidate/profile/video-resume/download`
+          : null,
+        maxSeconds: env.videoMaxSeconds,
+        maxBytes: env.videoMaxBytes,
+      },
+    };
+  }
+
+  async downloadCandidateVideoResume(candidate: AuthenticatedCandidate) {
+    const { candidate: candidateDoc } = await loadCandidatePair(candidate.userId);
+    const mediaId = parseMediaRef(candidateDoc.videoResume);
+    if (!mediaId) {
+      throw new AppError('Video resume not found', HTTP_STATUS.NOT_FOUND);
+    }
+    const { media, buffer } = await readMediaBuffer(mediaId);
+    if (media.ownerUserId.toString() !== candidate.userId) {
+      throw new AppError('Video resume access denied', HTTP_STATUS.FORBIDDEN);
+    }
+    if (media.category !== 'candidate_video_resume') {
+      throw new AppError('Video resume access denied', HTTP_STATUS.FORBIDDEN);
+    }
+    return { media, buffer };
+  }
+
+  async deleteCandidateVideoResume(candidate: AuthenticatedCandidate) {
+    const { candidate: candidateDoc } = await loadCandidatePair(candidate.userId);
+    const previous = candidateDoc.videoResume ?? '';
+    candidateDoc.videoResume = '';
+    await candidateDoc.save();
+    await deleteMediaByRef(previous, { ownerUserId: candidate.userId });
+    return {
+      videoResume: mapVideoResumeMetadata(candidateDoc),
+      deleted: true,
+    };
+  }
+
+  async uploadJobVideoJd(
+    employer: AuthenticatedEmployer,
+    jobId: string,
+    file: Express.Multer.File,
+    durationSecondsRaw?: unknown,
+  ) {
+    const job = await Job.findOne({
+      _id: jobId,
+      employerId: employer.employerId,
+      deletedAt: null,
+    });
+    if (!job) throw new AppError('Job not found', HTTP_STATUS.NOT_FOUND);
+
+    const previous = job.videoJd ?? '';
+    const durationSeconds = requireVideoDurationSeconds(durationSecondsRaw);
+
+    const uploaded = await uploadMedia({
+      category: 'job_video_jd',
+      ownerUserId: employer.userId,
+      ownerType: 'employer',
+      entityType: 'job',
+      entityId: jobId,
+      originalName: file.originalname,
+      declaredMime: file.mimetype,
+      buffer: file.buffer,
+      size: file.size,
+      previousRef: previous,
+      durationSeconds,
+    });
+
+    job.videoJd = uploaded.domainRef;
+    await job.save();
+
+    return {
+      videoJd: uploaded.domainRef,
+      hasVideoJd: true,
+      media: uploaded.media,
+      maxSeconds: env.videoMaxSeconds,
+      maxBytes: env.videoMaxBytes,
+    };
+  }
+
+  async deleteJobVideoJd(employer: AuthenticatedEmployer, jobId: string) {
+    const job = await Job.findOne({
+      _id: jobId,
+      employerId: employer.employerId,
+      deletedAt: null,
+    });
+    if (!job) throw new AppError('Job not found', HTTP_STATUS.NOT_FOUND);
+
+    const previous = job.videoJd ?? '';
+    job.videoJd = '';
+    await job.save();
+    await deleteMediaByRef(previous, { ownerUserId: employer.userId });
+    return { videoJd: '', hasVideoJd: false, deleted: true };
+  }
+
+  async uploadApplicationVideoResume(
+    candidate: AuthenticatedCandidate,
+    applicationId: string,
+    file: Express.Multer.File,
+    durationSecondsRaw?: unknown,
+  ) {
+    const application = await Application.findOne({
+      _id: applicationId,
+      candidateId: candidate.candidateId,
+    });
+    if (!application) throw new AppError('Application not found', HTTP_STATUS.NOT_FOUND);
+
+    const previous = application.videoResume ?? '';
+    const durationSeconds = requireVideoDurationSeconds(durationSecondsRaw);
+
+    const uploaded = await uploadMedia({
+      category: 'candidate_video_resume',
+      ownerUserId: candidate.userId,
+      ownerType: 'candidate',
+      entityType: 'application',
+      entityId: applicationId,
+      originalName: file.originalname,
+      declaredMime: file.mimetype,
+      buffer: file.buffer,
+      size: file.size,
+      previousRef: previous,
+      durationSeconds,
+    });
+
+    application.videoResume = uploaded.domainRef;
+    await application.save();
+
+    return {
+      videoResume: {
+        hasVideoResume: true,
+        media: uploaded.media,
+        downloadUrl: `${env.apiPrefix}/candidate/applications/${applicationId}/video-resume/download`,
+      },
+    };
+  }
+
+  async downloadApplicationVideoResumeForCandidate(
+    candidate: AuthenticatedCandidate,
+    applicationId: string,
+  ) {
+    const application = await Application.findOne({
+      _id: applicationId,
+      candidateId: candidate.candidateId,
+    });
+    if (!application) throw new AppError('Application not found', HTTP_STATUS.NOT_FOUND);
+
+    const mediaId = parseMediaRef(application.videoResume);
+    if (!mediaId) throw new AppError('Video resume not found', HTTP_STATUS.NOT_FOUND);
+
+    const { media, buffer } = await readMediaBuffer(mediaId);
+    if (media.ownerUserId.toString() !== candidate.userId) {
+      throw new AppError('Video resume access denied', HTTP_STATUS.FORBIDDEN);
+    }
+    if (media.category !== 'candidate_video_resume') {
+      throw new AppError('Video resume access denied', HTTP_STATUS.FORBIDDEN);
+    }
+    return { media, buffer };
+  }
+
+  async deleteApplicationVideoResume(candidate: AuthenticatedCandidate, applicationId: string) {
+    const application = await Application.findOne({
+      _id: applicationId,
+      candidateId: candidate.candidateId,
+    });
+    if (!application) throw new AppError('Application not found', HTTP_STATUS.NOT_FOUND);
+
+    const previous = application.videoResume ?? '';
+    application.videoResume = '';
+    await application.save();
+    await deleteMediaByRef(previous, { ownerUserId: candidate.userId });
+    return { hasVideoResume: false, deleted: true };
+  }
+
+  async downloadApplicationVideoResumeForEmployer(
+    employer: AuthenticatedEmployer,
+    applicationId: string,
+  ) {
+    const application = await Application.findOne({
+      _id: applicationId,
+      employerId: employer.employerId,
+    });
+    if (!application) throw new AppError('Application not found', HTTP_STATUS.NOT_FOUND);
+
+    const mediaId = parseMediaRef(application.videoResume);
+    if (!mediaId) throw new AppError('Video resume not found', HTTP_STATUS.NOT_FOUND);
+
+    const { media, buffer } = await readMediaBuffer(mediaId);
+    if (media.category !== 'candidate_video_resume') {
+      throw new AppError('Video resume access denied', HTTP_STATUS.FORBIDDEN);
+    }
+    return { media, buffer };
+  }
+
   async uploadCompanyLogo(employer: AuthenticatedEmployer, file: Express.Multer.File) {
     const company = await Company.findById(employer.companyId);
     if (!company) throw new AppError('Company not found', HTTP_STATUS.NOT_FOUND);
@@ -288,6 +562,9 @@ export class MediaUploadService {
   async streamPublicMedia(mediaId: string) {
     const { media, buffer } = await readMediaBuffer(mediaId);
     if (media.visibility !== 'public') {
+      throw new AppError('File not found', HTTP_STATUS.NOT_FOUND);
+    }
+    if (media.category === 'job_video_jd' && !env.enableVideoJd) {
       throw new AppError('File not found', HTTP_STATUS.NOT_FOUND);
     }
     return { media, buffer };

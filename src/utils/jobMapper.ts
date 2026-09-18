@@ -1,4 +1,5 @@
 import type { Types } from 'mongoose';
+import { env } from '../config/env';
 
 export interface JobLocationLike {
   locationId?: Types.ObjectId | null;
@@ -16,6 +17,7 @@ export interface JobLike {
   title: string;
   slug: string;
   description: string;
+  videoJd?: string | null;
   responsibilities?: string[] | null;
   requirements?: string[] | null;
   skills?: string[] | null;
@@ -78,11 +80,15 @@ function mapLocation(location?: JobLocationLike | null) {
 }
 
 function mapCoreJob(job: JobLike) {
+  const videoJd =
+    env.enableVideoJd && job.videoJd?.trim() ? job.videoJd.trim() : '';
   return {
     id: job._id.toString(),
     title: job.title,
     slug: job.slug,
     description: job.description,
+    videoJd,
+    hasVideoJd: Boolean(videoJd),
     responsibilities: job.responsibilities ?? [],
     requirements: job.requirements ?? [],
     skills: job.skills ?? [],
@@ -146,6 +152,8 @@ export function mapPublicJob(
     title: core.title,
     slug: core.slug,
     description: core.description,
+    videoJd: core.videoJd,
+    hasVideoJd: core.hasVideoJd,
     responsibilities: core.responsibilities,
     requirements: core.requirements,
     skills: core.skills,

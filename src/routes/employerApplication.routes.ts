@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { applicationController } from '../controllers/application.controller';
+import { mediaController } from '../controllers/media.controller';
 import { authenticate } from '../middlewares/auth.middleware';
 import { requireEmployer } from '../middlewares/employerAuth.middleware';
+import { requireVideoResumeEnabled } from '../middlewares/featureFlag.middleware';
 import { requireRole } from '../middlewares/role.middleware';
 import {
   validateApplicationIdParam,
@@ -20,6 +22,15 @@ employerApplicationRouter.get('/', validateEmployerApplicationQuery, (req, res, 
 employerApplicationRouter.get('/:id', validateApplicationIdParam, (req, res, next) => {
   void applicationController.getEmployerById(req, res, next);
 });
+
+employerApplicationRouter.get(
+  '/:id/video-resume/download',
+  validateApplicationIdParam,
+  requireVideoResumeEnabled,
+  (req, res, next) => {
+    void mediaController.downloadApplicationVideoResumeEmployer(req, res, next);
+  },
+);
 
 employerApplicationRouter.patch(
   '/:id/status',

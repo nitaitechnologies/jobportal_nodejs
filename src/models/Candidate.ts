@@ -48,6 +48,8 @@ const candidateSchema = new Schema(
     workExperience: { type: [workExperienceSchema], default: [] },
     certifications: { type: [certificationSchema], default: [] },
     resume: { type: String, trim: true, default: '' },
+    /** Private media: ref for profile video resume (max 2MB / 40s when enabled). */
+    videoResume: { type: String, trim: true, default: '' },
     portfolio: { type: String, trim: true, default: '' },
     socialLinks: { type: socialLinksSchema, default: () => ({}) },
     profileVisibility: {

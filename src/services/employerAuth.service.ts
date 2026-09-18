@@ -11,6 +11,7 @@ import type {
   EmployerLoginInput,
   EmployerRegisterInput,
 } from '../validators/employerAuth.validator';
+import { getFeatureFlags } from '../utils/featureFlags';
 import { trackSafely } from './analytics.service';
 
 const INVALID_CREDENTIALS = 'Invalid email or password';
@@ -36,6 +37,18 @@ export interface EmployerAuthResult {
     verificationStatus: string;
     status?: string;
   };
+  features: {
+    videoJdEnabled: boolean;
+    videoResumeEnabled: boolean;
+    videoMaxBytes: number;
+    videoMaxSeconds: number;
+  };
+}
+
+function withFeatures<T extends object>(
+  payload: T,
+): T & { features: EmployerAuthResult['features'] } {
+  return { ...payload, features: getFeatureFlags() };
 }
 
 export class EmployerAuthService {
@@ -92,7 +105,7 @@ export class EmployerAuthService {
         role: 'employer',
       });
 
-      return {
+      return withFeatures({
         accessToken,
         user: {
           id: user._id.toString(),
@@ -111,7 +124,7 @@ export class EmployerAuthService {
           slug: company.slug,
           verificationStatus: company.verificationStatus,
         },
-      };
+      });
     } catch (error) {
       if (createdUserId) {
         await Employer.deleteOne({ userId: createdUserId }).catch(() => undefined);
@@ -177,7 +190,7 @@ export class EmployerAuthService {
       companyId: company._id,
     });
 
-    return {
+    return withFeatures({
       accessToken,
       user: {
         id: user._id.toString(),
@@ -198,7 +211,7 @@ export class EmployerAuthService {
         verificationStatus: company.verificationStatus,
         status: company.status,
       },
-    };
+    });
   }
 
   async getProfile(userId: string): Promise<Omit<EmployerAuthResult, 'accessToken'>> {
@@ -220,7 +233,7 @@ export class EmployerAuthService {
       throw new AppError('Employer not found', HTTP_STATUS.NOT_FOUND);
     }
 
-    return {
+    return withFeatures({
       user: {
         id: user._id.toString(),
         name: user.name,
@@ -240,7 +253,7 @@ export class EmployerAuthService {
         verificationStatus: company.verificationStatus,
         status: company.status,
       },
-    };
+    });
   }
 }
 

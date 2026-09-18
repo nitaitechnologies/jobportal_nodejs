@@ -97,6 +97,139 @@ export class MediaController {
     }
   }
 
+  async uploadCandidateVideoResume(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await mediaUploadService.uploadCandidateVideoResume(
+        requireCandidate(req),
+        requireUploadedFile(req),
+        req.body?.durationSeconds,
+      );
+      sendSuccess(res, data, 'Video resume uploaded successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getCandidateVideoResume(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await mediaUploadService.getCandidateVideoResume(requireCandidate(req));
+      sendSuccess(res, data, 'Video resume fetched successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async downloadCandidateVideoResume(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { media, buffer } = await mediaUploadService.downloadCandidateVideoResume(
+        requireCandidate(req),
+      );
+      res.setHeader('Content-Type', media.mimeType);
+      const safeName = media.originalName
+        .replace(/[^\w.\- ()[\]]+/g, '_')
+        .replace(/"/g, '')
+        .slice(0, 180);
+      res.setHeader(
+        'Content-Disposition',
+        `inline; filename="${safeName || 'video-resume'}"`,
+      );
+      res.setHeader('Content-Length', String(buffer.length));
+      res.status(HTTP_STATUS.OK).send(buffer);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteCandidateVideoResume(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await mediaUploadService.deleteCandidateVideoResume(requireCandidate(req));
+      sendSuccess(res, data, 'Video resume deleted successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async uploadJobVideoJd(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await mediaUploadService.uploadJobVideoJd(
+        requireEmployer(req),
+        idParam(req),
+        requireUploadedFile(req),
+        req.body?.durationSeconds,
+      );
+      sendSuccess(res, data, 'Video JD uploaded successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteJobVideoJd(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await mediaUploadService.deleteJobVideoJd(requireEmployer(req), idParam(req));
+      sendSuccess(res, data, 'Video JD deleted successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async uploadApplicationVideoResume(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await mediaUploadService.uploadApplicationVideoResume(
+        requireCandidate(req),
+        idParam(req),
+        requireUploadedFile(req),
+        req.body?.durationSeconds,
+      );
+      sendSuccess(res, data, 'Application video resume uploaded successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async downloadApplicationVideoResumeCandidate(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { media, buffer } =
+        await mediaUploadService.downloadApplicationVideoResumeForCandidate(
+          requireCandidate(req),
+          idParam(req),
+        );
+      res.setHeader('Content-Type', media.mimeType);
+      res.setHeader('Content-Disposition', 'inline; filename="video-resume"');
+      res.setHeader('Content-Length', String(buffer.length));
+      res.status(HTTP_STATUS.OK).send(buffer);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteApplicationVideoResume(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await mediaUploadService.deleteApplicationVideoResume(
+        requireCandidate(req),
+        idParam(req),
+      );
+      sendSuccess(res, data, 'Application video resume deleted successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async downloadApplicationVideoResumeEmployer(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { media, buffer } =
+        await mediaUploadService.downloadApplicationVideoResumeForEmployer(
+          requireEmployer(req),
+          idParam(req),
+        );
+      res.setHeader('Content-Type', media.mimeType);
+      res.setHeader('Content-Disposition', 'inline; filename="video-resume"');
+      res.setHeader('Content-Length', String(buffer.length));
+      res.status(HTTP_STATUS.OK).send(buffer);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async uploadCompanyLogo(req: Request, res: Response, next: NextFunction) {
     try {
       const data = await mediaUploadService.uploadCompanyLogo(
