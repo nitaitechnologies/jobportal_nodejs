@@ -39,6 +39,7 @@ export function mapSafeCandidateProfile(candidate: CandidateDoc) {
     totalExperience: candidate.totalExperience ?? 0,
     expectedSalary: candidate.expectedSalary ?? null,
     noticePeriod: candidate.noticePeriod ?? 0,
+    availableFrom: candidate.availableFrom ?? null,
     employmentStatus: candidate.employmentStatus ?? 'looking',
     skills: candidate.skills ?? [],
     education: candidate.education ?? [],

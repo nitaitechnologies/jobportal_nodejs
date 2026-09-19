@@ -49,6 +49,7 @@ export function mapAdminCandidateResponse(input: {
     profileVisibility?: string | null;
     profileCompletion?: number | null;
     skills?: string[] | null;
+    availableFrom?: Date | null;
     createdAt?: Date;
     updatedAt?: Date;
   };
@@ -82,6 +83,7 @@ export function mapAdminCandidateResponse(input: {
     profileVisibility: input.candidate.profileVisibility ?? 'public',
     profileCompletion: input.candidate.profileCompletion ?? 0,
     skills: input.candidate.skills ?? [],
+    availableFrom: input.candidate.availableFrom ?? null,
     lastLoginAt: input.user.lastLoginAt ?? null,
     createdAt: input.candidate.createdAt ?? input.user.createdAt ?? null,
     updatedAt: input.candidate.updatedAt ?? null,

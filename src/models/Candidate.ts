@@ -38,6 +38,8 @@ const candidateSchema = new Schema(
     totalExperience: { type: Number, min: 0, default: 0 },
     expectedSalary: { type: Number, min: 0 },
     noticePeriod: { type: Number, min: 0, default: 0 },
+    /** Calendar date the candidate can join. Kept in sync with noticePeriod. */
+    availableFrom: { type: Date },
     employmentStatus: {
       type: String,
       enum: EMPLOYMENT_STATUSES,

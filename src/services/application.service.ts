@@ -10,6 +10,7 @@ import { Job } from '../models/Job';
 import { Location } from '../models/Location';
 import { User } from '../models/User';
 import type { AuthenticatedCandidate, AuthenticatedEmployer } from '../types/auth.types';
+import { scoreJobMatch } from '../utils/matchScore';
 import {
   mapCandidateApplication,
   mapEmployerApplication,
@@ -243,6 +244,54 @@ async function resolveApplyVideoResume(
   throw new AppError('Invalid video resume reference', HTTP_STATUS.BAD_REQUEST);
 }
 
+function matchFor(
+  job: {
+    title: string;
+    skills?: string[] | null;
+    requirements?: string[] | null;
+    experienceMin?: number | null;
+    experienceMax?: number | null;
+    salaryMin?: number | null;
+    salaryMax?: number | null;
+    workMode?: string | null;
+    location?: {
+      address?: string | null;
+      city?: string | null;
+      displayName?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
+    } | null;
+  },
+  candidate: {
+    headline?: string;
+    currentJobTitle?: string;
+    skills?: string[];
+    totalExperience?: number;
+    expectedSalary?: number | null;
+    currentLocation?: string;
+    latitude?: number | null;
+    longitude?: number | null;
+  },
+) {
+  const location = job.location;
+  return scoreJobMatch(
+    {
+      title: job.title,
+      skills: job.skills ?? [],
+      requirements: job.requirements ?? [],
+      experienceMin: job.experienceMin ?? 0,
+      experienceMax: job.experienceMax ?? null,
+      salaryMin: job.salaryMin ?? null,
+      salaryMax: job.salaryMax ?? null,
+      workMode: job.workMode,
+      locationText: [location?.address, location?.city, location?.displayName].filter(Boolean).join(' '),
+      latitude: typeof location?.latitude === 'number' ? location.latitude : null,
+      longitude: typeof location?.longitude === 'number' ? location.longitude : null,
+    },
+    candidate,
+  );
+}
+
 async function loadEmployerCandidateView(candidateId: mongoose.Types.ObjectId) {
   const candidate = await Candidate.findById(candidateId);
   if (!candidate) {
@@ -268,6 +317,9 @@ async function loadEmployerCandidateView(candidateId: mongoose.Types.ObjectId) {
     portfolio: candidate.portfolio ?? '',
     expectedSalary: candidate.expectedSalary ?? null,
     noticePeriod: candidate.noticePeriod ?? 0,
+    availableFrom: candidate.availableFrom ?? null,
+    latitude: typeof candidate.latitude === 'number' ? candidate.latitude : null,
+    longitude: typeof candidate.longitude === 'number' ? candidate.longitude : null,
   };
 }
 
@@ -513,7 +565,7 @@ export class ApplicationService {
     ]);
 
     const jobs = await Job.find({ _id: { $in: items.map((item) => item.jobId) } }).select(
-      'title slug status workMode employmentType',
+      'title slug status workMode employmentType skills requirements experienceMin experienceMax salaryMin salaryMax location',
     );
     const jobMap = new Map(jobs.map((job) => [job._id.toString(), job]));
 
@@ -533,6 +585,7 @@ export class ApplicationService {
               }
             : null,
           candidate: candidateView,
+          match: job && candidateView ? matchFor(job, candidateView) : null,
         });
       }),
     );
@@ -563,7 +616,7 @@ export class ApplicationService {
     }
 
     const job = await Job.findById(application.jobId).select(
-      'title slug status workMode employmentType',
+      'title slug status workMode employmentType skills requirements experienceMin experienceMax salaryMin salaryMax location',
     );
     const candidateView = await loadEmployerCandidateView(application.candidateId);
 
@@ -580,6 +633,7 @@ export class ApplicationService {
             }
           : null,
         candidate: candidateView,
+        match: job && candidateView ? matchFor(job, candidateView) : null,
       }),
     };
   }

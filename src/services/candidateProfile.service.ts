@@ -3,6 +3,7 @@ import { placesService } from './places.service';
 import { User } from '../models/User';
 import { HTTP_STATUS } from '../constants';
 import { AppError } from '../utils/AppError';
+import { dateFromNoticeDays, noticeDaysUntil } from '../utils/availability';
 import {
   deriveTotalExperienceYears,
   getCandidateProfileCompletionDetails,
@@ -194,6 +195,15 @@ export class CandidateProfileService {
       }
 
       (candidate as unknown as Record<string, unknown>)[field] = input[field];
+    }
+
+    if (input.availableFrom) {
+      candidate.availableFrom = input.availableFrom;
+      candidate.noticePeriod = noticeDaysUntil(input.availableFrom);
+    } else if (input.availableFrom === null) {
+      candidate.set('availableFrom', undefined);
+    } else if (input.noticePeriod !== undefined) {
+      candidate.availableFrom = dateFromNoticeDays(input.noticePeriod);
     }
 
     const details = applyCompletion(user, candidate);

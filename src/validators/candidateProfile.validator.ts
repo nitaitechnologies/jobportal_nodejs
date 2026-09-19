@@ -161,6 +161,7 @@ export const candidateProfileUpdateSchema = z
     totalExperience: z.number().min(0).max(60).optional(),
     expectedSalary: z.number().min(0).max(100_000_000).optional().nullable(),
     noticePeriod: z.number().int().min(0).max(365).optional(),
+    availableFrom: z.coerce.date().optional().nullable(),
     employmentStatus: z.enum(EMPLOYMENT_STATUSES).optional(),
     skills: skillsArraySchema.optional(),
     education: z.array(educationItemSchema).max(20).optional(),

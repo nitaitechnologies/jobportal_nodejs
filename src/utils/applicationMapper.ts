@@ -52,6 +52,7 @@ export function mapEmployerApplication(
   extras?: {
     job?: Record<string, unknown> | null;
     candidate?: Record<string, unknown> | null;
+    match?: Record<string, unknown> | null;
   },
 ) {
   const resumeRaw = application.resume ?? '';
@@ -81,5 +82,6 @@ export function mapEmployerApplication(
     updatedAt: application.updatedAt,
     job: extras?.job ?? null,
     candidate: extras?.candidate ?? null,
+    match: extras?.match ?? null,
   };
 }
