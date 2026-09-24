@@ -6,13 +6,16 @@ import { Employer } from '../models/Employer';
 import type { AuthenticatedAdmin } from '../types/auth.types';
 import { AppError } from '../utils/AppError';
 import { mapAdminCompanyResponse } from '../utils/adminManagementMapper';
+import { parseMediaRef } from '../utils/mediaMapper';
 import { writeAuditSafely } from './audit.service';
+import { readMediaBuffer } from './media.service';
 import { notifySafely, resolveEmployerUserId } from './notification.service';
 import type {
   AdminCompanyListQuery,
   AdminCompanyStatusInput,
   AdminCompanyVerificationInput,
 } from '../validators/adminManagement.validator';
+import type { CompanyDocumentType } from '../validators/companyVerification.validator';
 
 function canTransitionVerification(
   from: VerificationStatus,
@@ -147,6 +150,26 @@ export class AdminCompanyService {
     }
 
     company.verificationStatus = next;
+
+    // Stamp KYC documents when admin decides (sheet 176–178).
+    const docs = Array.isArray(company.documents) ? [...company.documents] : [];
+    if (docs.length && (next === 'verified' || next === 'rejected')) {
+      const reviewedAt = new Date();
+      const rejectionReason =
+        next === 'rejected' ? (input.note ?? 'Rejected by admin').slice(0, 500) : '';
+      company.set(
+        'documents',
+        docs.map((doc) => ({
+          type: doc.type,
+          mediaUrl: doc.mediaUrl,
+          status: next === 'verified' ? 'verified' : 'rejected',
+          submittedAt: doc.submittedAt ?? reviewedAt,
+          reviewedAt,
+          rejectionReason,
+        })),
+      );
+    }
+
     await company.save();
 
     const action =
@@ -187,6 +210,56 @@ export class AdminCompanyService {
     }
 
     return this.getById(id);
+  }
+
+  async updateFeatured(actor: AuthenticatedAdmin, id: string, featured: boolean) {
+    const company = await Company.findById(id);
+    if (!company) throw new AppError('Company not found', HTTP_STATUS.NOT_FOUND);
+
+    const previous = Boolean(company.featured);
+    company.featured = featured;
+    company.featuredAt = featured ? new Date() : null;
+    await company.save();
+
+    await writeAuditSafely({
+      admin: actor,
+      action: featured ? 'company_featured' : 'company_unfeatured',
+      entityType: 'company',
+      entityId: company._id,
+      metadata: { from: previous, to: featured },
+    });
+
+    return this.getById(id);
+  }
+
+  /**
+   * Controlled download of private KYC documents (PAN/GST/incorporation/other).
+   * Admin sheet ID 391 — PAN/GST/document review.
+   */
+  async downloadDocument(id: string, docType: CompanyDocumentType) {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new AppError('Company not found', HTTP_STATUS.NOT_FOUND);
+    }
+    const company = await Company.findById(id);
+    if (!company) throw new AppError('Company not found', HTTP_STATUS.NOT_FOUND);
+
+    const docs = Array.isArray(company.documents) ? company.documents : [];
+    const doc = docs.find((row) => row.type === docType);
+    if (!doc?.mediaUrl?.trim()) {
+      throw new AppError('Verification document not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const mediaId = parseMediaRef(doc.mediaUrl);
+    if (!mediaId) {
+      throw new AppError('Verification document file not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const { media, buffer } = await readMediaBuffer(mediaId);
+    if (media.category !== 'company_verification_doc') {
+      throw new AppError('Document access denied', HTTP_STATUS.FORBIDDEN);
+    }
+
+    return { media, buffer, type: docType };
   }
 }
 

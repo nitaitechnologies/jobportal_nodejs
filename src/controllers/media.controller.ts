@@ -67,6 +67,15 @@ export class MediaController {
     }
   }
 
+  async listSelectableResumes(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await mediaUploadService.listSelectableResumes(requireCandidate(req));
+      sendSuccess(res, data, 'Selectable resumes fetched successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async downloadCandidateResume(req: Request, res: Response, next: NextFunction) {
     try {
       const { media, buffer } = await mediaUploadService.downloadCandidateResume(
@@ -272,6 +281,35 @@ export class MediaController {
     }
   }
 
+  async uploadCompanyGalleryItem(req: Request, res: Response, next: NextFunction) {
+    try {
+      const caption =
+        typeof req.body?.caption === 'string' ? req.body.caption : '';
+      const data = await mediaUploadService.uploadCompanyGalleryItem(
+        requireEmployer(req),
+        requireUploadedFile(req),
+        caption,
+      );
+      sendSuccess(res, data, 'Gallery item uploaded successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteCompanyGalleryItem(req: Request, res: Response, next: NextFunction) {
+    try {
+      const raw = req.params.index;
+      const index = Number.parseInt(String(raw), 10);
+      const data = await mediaUploadService.deleteCompanyGalleryItem(
+        requireEmployer(req),
+        index,
+      );
+      sendSuccess(res, data, 'Gallery item deleted successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async uploadArticleImage(req: Request, res: Response, next: NextFunction) {
     try {
       const data = await mediaUploadService.uploadArticleImage(
@@ -297,9 +335,33 @@ export class MediaController {
   async streamPublic(req: Request, res: Response, next: NextFunction) {
     try {
       const { media, buffer } = await mediaUploadService.streamPublicMedia(idParam(req));
-      res.setHeader('Content-Type', media.mimeType);
+      const total = buffer.length;
+      const mime = media.mimeType;
+      res.setHeader('Content-Type', mime);
       res.setHeader('Cache-Control', 'public, max-age=86400');
-      res.setHeader('Content-Length', String(buffer.length));
+      res.setHeader('Accept-Ranges', 'bytes');
+
+      const rangeHeader = req.headers.range;
+      if (typeof rangeHeader === 'string' && rangeHeader.startsWith('bytes=')) {
+        const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+        if (match) {
+          let start = match[1] ? Number(match[1]) : 0;
+          let end = match[2] ? Number(match[2]) : total - 1;
+          if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end < start) {
+            res.setHeader('Content-Range', `bytes */${total}`);
+            res.status(416).end();
+            return;
+          }
+          end = Math.min(end, total - 1);
+          const chunk = buffer.subarray(start, end + 1);
+          res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+          res.setHeader('Content-Length', String(chunk.length));
+          res.status(206).send(chunk);
+          return;
+        }
+      }
+
+      res.setHeader('Content-Length', String(total));
       res.status(HTTP_STATUS.OK).send(buffer);
     } catch (error) {
       next(error);

@@ -68,6 +68,13 @@ export async function seedEmployersAndCompanies(ctx: SeedContext): Promise<void>
           foundedYear: companyDef.foundedYear,
           headquarters: companyDef.headquarters,
           locations: companyDef.locations,
+          benefits: companyDef.benefits ?? [],
+          gallery: (companyDef.gallery ?? []).map((item, index) => ({
+            url: item.url,
+            type: item.type ?? 'image',
+            caption: item.caption ?? '',
+            sortOrder: index,
+          })),
           contactEmail: demoEmail(`hr.${slug.replace(/-/g, '.')}`),
           contactPhone: phone,
           socialLinks: {

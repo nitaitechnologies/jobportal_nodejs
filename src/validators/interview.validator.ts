@@ -60,6 +60,7 @@ export const interviewCreateSchema = z
     location: z.string().trim().max(500).optional().default(''),
     meetingLink: httpsUrl.optional().default(''),
     interviewer: z.string().trim().max(200).optional().default(''),
+    phoneContact: z.string().trim().max(40).optional().default(''),
     notes: z.string().trim().max(5000).optional().default(''),
   })
   .strict()
@@ -72,6 +73,13 @@ export const interviewCreateSchema = z
       });
     }
     refineScheduleByType(value, ctx);
+    if (value.type === 'phone' && !value.phoneContact?.trim()) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['phoneContact'],
+        message: 'phoneContact is required for phone interviews',
+      });
+    }
   });
 
 export const interviewUpdateSchema = z
@@ -82,6 +90,7 @@ export const interviewUpdateSchema = z
     location: z.string().trim().max(500).optional(),
     meetingLink: httpsUrl.optional(),
     interviewer: z.string().trim().max(200).optional(),
+    phoneContact: z.string().trim().max(40).optional(),
     notes: z.string().trim().max(5000).optional(),
   })
   .strict()
@@ -132,6 +141,21 @@ export const interviewDeclineSchema = z
   })
   .strict();
 
+/** Employer feedback when marking complete (292). */
+export const interviewCompleteSchema = z
+  .object({
+    rating: z.number().int().min(1).max(5).optional(),
+    outcome: z.enum(['hire', 'reject', 'hold', 'next_round']).optional(),
+    feedbackNotes: z.string().trim().max(5000).optional(),
+  })
+  .strict();
+
+export const interviewNoShowSchema = z
+  .object({
+    notes: z.string().trim().max(2000).optional(),
+  })
+  .strict();
+
 export const employerInterviewQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).optional().default(1),
@@ -147,6 +171,15 @@ export const candidateInterviewQuerySchema = z
     page: z.coerce.number().int().min(1).optional().default(1),
     limit: z.coerce.number().int().min(1).max(100).optional().default(20),
     status: z.enum(INTERVIEW_STATUSES).optional(),
+    /** When true, only active interviews with scheduledAt >= now (upcoming). */
+    upcoming: z
+      .union([z.literal('true'), z.literal('false'), z.boolean()])
+      .optional()
+      .transform((value) => {
+        if (value === undefined) return undefined;
+        if (typeof value === 'boolean') return value;
+        return value === 'true';
+      }),
   })
   .strict();
 
@@ -166,6 +199,9 @@ export const INTERVIEW_FORBIDDEN_FIELDS = [
   '_id',
   'id',
   'cancellationReason',
+  'reminder24hSentAt',
+  'reminder1hSentAt',
+  'feedback',
 ] as const;
 
 export type InterviewCreateInput = z.infer<typeof interviewCreateSchema>;
@@ -173,5 +209,7 @@ export type InterviewUpdateInput = z.infer<typeof interviewUpdateSchema>;
 export type InterviewRescheduleInput = z.infer<typeof interviewRescheduleSchema>;
 export type InterviewCancelInput = z.infer<typeof interviewCancelSchema>;
 export type InterviewDeclineInput = z.infer<typeof interviewDeclineSchema>;
+export type InterviewCompleteInput = z.infer<typeof interviewCompleteSchema>;
+export type InterviewNoShowInput = z.infer<typeof interviewNoShowSchema>;
 export type EmployerInterviewQuery = z.infer<typeof employerInterviewQuerySchema>;
 export type CandidateInterviewQuery = z.infer<typeof candidateInterviewQuerySchema>;

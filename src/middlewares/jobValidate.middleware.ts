@@ -6,7 +6,11 @@ import { parseRequestSchema } from '../utils/validation';
 import {
   JOB_FORBIDDEN_FIELDS,
   employerJobQuerySchema,
+  jobBoostNotifySchema,
   jobCreateSchema,
+  jobExtendSchema,
+  jobFeatureSchema,
+  jobUrgentFlagSchema,
   jobUpdateSchema,
   publicJobQuerySchema,
 } from '../validators/job.validator';
@@ -80,6 +84,58 @@ export function validateJobUpdate(req: Request, _res: Response, next: NextFuncti
     return;
   }
   const data = validateWithSchema(jobUpdateSchema, req.body, next);
+  if (!data) {
+    return;
+  }
+  req.body = data;
+  next();
+}
+
+export function validateJobExtend(req: Request, _res: Response, next: NextFunction): void {
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const data = validateWithSchema(jobExtendSchema, body, next);
+  if (!data) {
+    return;
+  }
+  req.body = data;
+  next();
+}
+
+export function validateJobFeature(req: Request, _res: Response, next: NextFunction): void {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    next(new AppError('Invalid request body', HTTP_STATUS.BAD_REQUEST));
+    return;
+  }
+  const data = validateWithSchema(jobFeatureSchema, req.body, next);
+  if (!data) {
+    return;
+  }
+  req.body = data;
+  next();
+}
+
+export function validateJobUrgentFlag(req: Request, _res: Response, next: NextFunction): void {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    next(new AppError('Invalid request body', HTTP_STATUS.BAD_REQUEST));
+    return;
+  }
+  const data = validateWithSchema(jobUrgentFlagSchema, req.body, next);
+  if (!data) {
+    return;
+  }
+  req.body = data;
+  next();
+}
+
+export function validateJobBoostNotify(req: Request, _res: Response, next: NextFunction): void {
+  if (req.body == null || req.body === '') {
+    req.body = {};
+  }
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    next(new AppError('Invalid request body', HTTP_STATUS.BAD_REQUEST));
+    return;
+  }
+  const data = validateWithSchema(jobBoostNotifySchema, req.body, next);
   if (!data) {
     return;
   }

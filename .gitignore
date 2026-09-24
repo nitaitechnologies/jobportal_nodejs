@@ -43,3 +43,5 @@ temp/
 # Local file uploads (B23)
 storage/uploads/
 !storage/uploads/.gitkeep
+storage/backups/
+!storage/backups/.gitkeep

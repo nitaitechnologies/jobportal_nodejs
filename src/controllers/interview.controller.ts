@@ -7,8 +7,10 @@ import type {
   CandidateInterviewQuery,
   EmployerInterviewQuery,
   InterviewCancelInput,
+  InterviewCompleteInput,
   InterviewCreateInput,
   InterviewDeclineInput,
+  InterviewNoShowInput,
   InterviewRescheduleInput,
   InterviewUpdateInput,
 } from '../validators/interview.validator';
@@ -109,8 +111,26 @@ export class InterviewController {
   async complete(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const id = typeof req.params.id === 'string' ? req.params.id : '';
-      const data = await interviewService.complete(requireEmployerContext(req), id);
+      const data = await interviewService.complete(
+        requireEmployerContext(req),
+        id,
+        (req.body ?? {}) as InterviewCompleteInput,
+      );
       sendSuccess(res, data, 'Interview marked as completed');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async markNoShow(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const id = typeof req.params.id === 'string' ? req.params.id : '';
+      const data = await interviewService.markNoShow(
+        requireEmployerContext(req),
+        id,
+        (req.body ?? {}) as InterviewNoShowInput,
+      );
+      sendSuccess(res, data, 'Interview marked as no-show');
     } catch (error) {
       next(error);
     }
@@ -155,6 +175,20 @@ export class InterviewController {
         req.body as InterviewDeclineInput,
       );
       sendSuccess(res, data, 'Interview declined successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async candidateReschedule(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const id = typeof req.params.id === 'string' ? req.params.id : '';
+      const data = await interviewService.candidateReschedule(
+        requireCandidateContext(req),
+        id,
+        req.body as InterviewRescheduleInput,
+      );
+      sendSuccess(res, data, 'Interview rescheduled successfully');
     } catch (error) {
       next(error);
     }

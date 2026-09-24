@@ -1,3 +1,4 @@
+import { Coupon } from '../../models/Coupon';
 import { Subscription } from '../../models/Subscription';
 import { SubscriptionPlan } from '../../models/SubscriptionPlan';
 import type { SubscriptionStatus } from '../../constants/enums';
@@ -41,6 +42,66 @@ export async function seedSubscriptionPlans(ctx: SeedContext): Promise<void> {
   }
 
   ctx.summary.plans = ctx.plans.length;
+}
+
+/** Demo coupons for checkout preview / admin activation (sheet 348). */
+export async function seedCoupons(ctx: SeedContext): Promise<void> {
+  const starter = ctx.plans.find((p) => p.slug === 'starter');
+  const professional = ctx.plans.find((p) => p.slug === 'professional');
+
+  const defs: Array<{
+    code: string;
+    description: string;
+    type: 'percent' | 'fixed';
+    value: number;
+    applicablePlanIds: SeedPlanRef['planId'][];
+    minAmount: number;
+    maxRedemptions: number;
+  }> = [
+    {
+      code: 'WELCOME20',
+      description: '20% off any paid plan',
+      type: 'percent',
+      value: 20,
+      applicablePlanIds: [],
+      minAmount: 1,
+      maxRedemptions: 0,
+    },
+    {
+      code: 'FLAT500',
+      description: '₹500 off Starter or Professional',
+      type: 'fixed',
+      value: 500,
+      applicablePlanIds: [starter, professional].filter(Boolean).map((p) => p!.planId),
+      minAmount: 500,
+      maxRedemptions: 100,
+    },
+  ];
+
+  for (const def of defs) {
+    await Coupon.findOneAndUpdate(
+      { code: def.code },
+      {
+        $set: {
+          code: def.code,
+          description: def.description,
+          type: def.type,
+          value: def.value,
+          currency: 'INR',
+          applicablePlanIds: def.applicablePlanIds,
+          minAmount: def.minAmount,
+          maxRedemptions: def.maxRedemptions,
+          validFrom: null,
+          validTo: daysFromNow(365),
+          status: 'active',
+        },
+        $setOnInsert: { redeemedCount: 0 },
+      },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
+    );
+  }
+
+  ctx.summary.coupons = defs.length;
 }
 
 function planBySlug(ctx: SeedContext, slug: string): SeedPlanRef {

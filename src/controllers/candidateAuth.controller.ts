@@ -4,7 +4,12 @@ import { candidateAuthService } from '../services/candidateAuth.service';
 import { AppError } from '../utils/AppError';
 import { sendSuccess } from '../utils/apiResponse';
 import type {
+  CandidateAccountDeleteInput,
   CandidateLoginInput,
+  CandidateOtpSendInput,
+  CandidateOtpVerifyInput,
+  CandidatePasswordForgotInput,
+  CandidatePasswordResetInput,
   CandidateRegisterInput,
 } from '../validators/candidateAuth.validator';
 import '../types/express';
@@ -23,6 +28,77 @@ export class CandidateAuthController {
     try {
       const result = await candidateAuthService.login(req.body as CandidateLoginInput);
       sendSuccess(res, result, 'Candidate login successful');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async sendOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await candidateAuthService.sendOtp(req.body as CandidateOtpSendInput);
+      sendSuccess(res, result, 'OTP sent successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async verifyOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await candidateAuthService.verifyOtp(req.body as CandidateOtpVerifyInput);
+      const status = result.isNewUser ? HTTP_STATUS.CREATED : HTTP_STATUS.OK;
+      const message = result.isNewUser
+        ? 'Candidate registration successful'
+        : 'Candidate login successful';
+      sendSuccess(res, result, message, status);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async forgotPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await candidateAuthService.forgotPassword(
+        req.body as CandidatePasswordForgotInput,
+      );
+      sendSuccess(res, result, 'If an account exists, a reset code has been issued');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async resetPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await candidateAuthService.resetPassword(
+        req.body as CandidatePasswordResetInput,
+      );
+      sendSuccess(res, result, 'Password reset successful');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deactivate(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.auth) {
+        throw new AppError('Authentication required', HTTP_STATUS.UNAUTHORIZED);
+      }
+      const result = await candidateAuthService.deactivateAccount(req.auth.userId);
+      sendSuccess(res, result, 'Candidate account deactivated');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteAccount(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.auth) {
+        throw new AppError('Authentication required', HTTP_STATUS.UNAUTHORIZED);
+      }
+      const result = await candidateAuthService.deleteAccount(
+        req.auth.userId,
+        req.body as CandidateAccountDeleteInput,
+      );
+      sendSuccess(res, result, 'Candidate account deleted');
     } catch (error) {
       next(error);
     }

@@ -11,6 +11,7 @@ import {
   APPLICATION_STATUSES,
 } from '../constants/enums';
 import { ALL_PERMISSIONS } from '../constants/permissions';
+import { COMPANY_DOCUMENT_TYPES } from './companyVerification.validator';
 
 export const objectIdSchema = z
   .string()
@@ -192,6 +193,13 @@ export const adminCompanyVerificationSchema = z
   })
   .strict();
 
+export const adminCompanyDocumentDownloadParamSchema = z
+  .object({
+    id: objectIdSchema,
+    type: z.enum(COMPANY_DOCUMENT_TYPES),
+  })
+  .strict();
+
 // --- Jobs ---
 export const adminJobListQuerySchema = z
   .object({
@@ -299,6 +307,9 @@ export type AdminEmployerStatusInput = z.infer<typeof adminEmployerStatusSchema>
 export type AdminCompanyListQuery = z.infer<typeof adminCompanyListQuerySchema>;
 export type AdminCompanyStatusInput = z.infer<typeof adminCompanyStatusSchema>;
 export type AdminCompanyVerificationInput = z.infer<typeof adminCompanyVerificationSchema>;
+export type AdminCompanyDocumentDownloadParams = z.infer<
+  typeof adminCompanyDocumentDownloadParamSchema
+>;
 export type AdminJobListQuery = z.infer<typeof adminJobListQuerySchema>;
 export type AdminJobStatusInput = z.infer<typeof adminJobStatusSchema>;
 export type AdminJobFlagInput = z.infer<typeof adminJobFlagSchema>;

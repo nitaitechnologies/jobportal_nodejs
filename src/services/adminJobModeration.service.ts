@@ -8,9 +8,11 @@ import { AppError } from '../utils/AppError';
 import { assertAdminJobTransition } from '../utils/jobStatus';
 import { mapEmployerJob } from '../utils/jobMapper';
 import { writeAuditSafely } from './audit.service';
+import { jobAlertService } from './jobAlert.service';
 import { notifySafely, resolveEmployerUserId } from './notification.service';
 import { findCurrentCompanySubscription, FREE_ENTITLEMENTS, isSubscriptionCurrentlyActive } from './entitlement.service';
 import { resolveJobExpiresAt } from '../utils/jobListingExpiry';
+import { deleteMediaByRef } from './media.service';
 import type {
   AdminJobFlagInput,
   AdminJobListQuery,
@@ -119,8 +121,59 @@ export class AdminJobModerationService {
               verificationStatus: company.verificationStatus,
             }
           : null,
+        includeVideoJd: true,
       }),
     };
+  }
+
+  /**
+   * Remove an inappropriate Video JD without rejecting the whole job listing.
+   * Clears Job.videoJd and deletes the underlying media file.
+   */
+  async removeVideoJd(
+    actor: AuthenticatedAdmin,
+    id: string,
+    reason?: string,
+  ) {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new AppError('Job not found', HTTP_STATUS.NOT_FOUND);
+    }
+    const job = await Job.findOne({ _id: id, deletedAt: null });
+    if (!job) throw new AppError('Job not found', HTTP_STATUS.NOT_FOUND);
+
+    const previous = job.videoJd?.trim() ?? '';
+    if (!previous) {
+      throw new AppError('Job has no video JD to remove', HTTP_STATUS.BAD_REQUEST, [
+        { path: 'videoJd', message: 'No video JD attached' },
+      ]);
+    }
+
+    job.videoJd = '';
+    await job.save();
+    await deleteMediaByRef(previous);
+
+    await writeAuditSafely({
+      admin: actor,
+      action: 'job_video_jd_removed',
+      entityType: 'job',
+      entityId: job._id,
+      metadata: { reason: reason?.trim() || null, previousRef: previous.slice(0, 80) },
+    });
+
+    const employerUserId = await resolveEmployerUserId(job.employerId);
+    if (employerUserId) {
+      await notifySafely({
+        recipientId: employerUserId,
+        type: 'JOB_STATUS_CHANGED',
+        title: 'Video JD Removed',
+        message: reason?.trim()
+          ? `The video JD for "${job.title}" was removed by moderation: ${reason.trim()}`
+          : `The video JD for "${job.title}" was removed by moderation.`,
+        data: { jobId: job._id.toString(), videoJdRemoved: true },
+      });
+    }
+
+    return this.getById(id);
   }
 
   async updateStatus(
@@ -232,6 +285,15 @@ export class AdminJobModerationService {
         note: 'Admin flag change does not alter subscription balances',
       },
     });
+
+    const becameHot =
+      (!previous.featured && job.featured) || (!previous.urgent && job.urgent);
+    if (becameHot) {
+      void jobAlertService.onJobHotFlagged(job._id).catch((error: unknown) => {
+        const reason = error instanceof Error ? error.message : 'unknown error';
+        console.error(`[job-alerts] hot-flag hook failed: ${reason}`);
+      });
+    }
 
     return this.getById(id);
   }

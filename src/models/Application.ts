@@ -9,6 +9,31 @@ const applicationAnswerSchema = new Schema(
   { _id: false },
 );
 
+/** Employer-private ATS notes (253). */
+const internalNoteSchema = new Schema(
+  {
+    text: { type: String, trim: true, required: true, maxlength: 5000 },
+    authorUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+    authorName: { type: String, trim: true, default: '', maxlength: 120 },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date },
+  },
+  { _id: true },
+);
+
+/** Durable stage history for application timeline (258). */
+const statusHistorySchema = new Schema(
+  {
+    from: { type: String, enum: APPLICATION_STATUSES, required: true },
+    to: { type: String, enum: APPLICATION_STATUSES, required: true },
+    at: { type: Date, default: Date.now },
+    byUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+    byName: { type: String, trim: true, default: '', maxlength: 120 },
+    auto: { type: Boolean, default: false },
+  },
+  { _id: false },
+);
+
 const applicationSchema = new Schema(
   {
     candidateId: {
@@ -44,9 +69,15 @@ const applicationSchema = new Schema(
     appliedAt: { type: Date, default: Date.now },
     viewedAt: { type: Date },
     shortlistedAt: { type: Date },
+    interviewAt: { type: Date },
     rejectedAt: { type: Date },
     hiredAt: { type: Date },
+    /** Employer-private ATS notes (253). */
     notes: { type: String, trim: true, default: '', maxlength: 5000 },
+    internalNotes: { type: [internalNoteSchema], default: [] },
+    /** Internal recruiter rating 1–5 (sheet 332). */
+    internalRating: { type: Number, min: 1, max: 5, default: null },
+    statusHistory: { type: [statusHistorySchema], default: [] },
     source: { type: String, trim: true, default: 'platform', maxlength: 80 },
   },
   {

@@ -5,7 +5,10 @@ export const MEDIA_CATEGORIES = [
   'job_video_jd',
   'company_logo',
   'company_cover',
+  'company_gallery',
+  'company_verification_doc',
   'career_article_image',
+  'chat_attachment',
 ] as const;
 export type MediaCategory = (typeof MEDIA_CATEGORIES)[number];
 
@@ -22,7 +25,10 @@ export const MEDIA_CATEGORY_VISIBILITY: Record<MediaCategory, MediaVisibility> =
   job_video_jd: 'public',
   company_logo: 'public',
   company_cover: 'public',
+  company_gallery: 'public',
+  company_verification_doc: 'private',
   career_article_image: 'public',
+  chat_attachment: 'private',
 };
 
 /** Max sizes in bytes (video categories overridden by VIDEO_MAX_BYTES via getMediaMaxBytes). */
@@ -33,7 +39,10 @@ export const MEDIA_MAX_BYTES: Record<MediaCategory, number> = {
   job_video_jd: 2 * 1024 * 1024, // 2 MB (default; use getMediaMaxBytes)
   company_logo: 2 * 1024 * 1024, // 2 MB
   company_cover: 5 * 1024 * 1024, // 5 MB
+  company_gallery: 5 * 1024 * 1024, // 5 MB
+  company_verification_doc: 5 * 1024 * 1024, // 5 MB
   career_article_image: 5 * 1024 * 1024, // 5 MB
+  chat_attachment: 10 * 1024 * 1024, // 10 MB
 };
 
 export function isVideoMediaCategory(category: MediaCategory): boolean {
@@ -51,7 +60,10 @@ export const MEDIA_ALLOWED_MIME: Record<MediaCategory, readonly string[]> = {
   job_video_jd: VIDEO_MIME_TYPES,
   company_logo: IMAGE_MIME_TYPES,
   company_cover: IMAGE_MIME_TYPES,
+  company_gallery: IMAGE_MIME_TYPES,
+  company_verification_doc: [...RESUME_MIME_TYPES, ...IMAGE_MIME_TYPES],
   career_article_image: IMAGE_MIME_TYPES,
+  chat_attachment: [...RESUME_MIME_TYPES, ...IMAGE_MIME_TYPES, 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
 };
 
 export const MEDIA_ALLOWED_EXTENSIONS: Record<MediaCategory, readonly string[]> = {
@@ -62,7 +74,10 @@ export const MEDIA_ALLOWED_EXTENSIONS: Record<MediaCategory, readonly string[]> 
   job_video_jd: ['.mp4', '.webm', '.mov', '.m4v'],
   company_logo: ['.jpg', '.jpeg', '.png', '.webp'],
   company_cover: ['.jpg', '.jpeg', '.png', '.webp'],
+  company_gallery: ['.jpg', '.jpeg', '.png', '.webp'],
+  company_verification_doc: ['.pdf', '.jpg', '.jpeg', '.png', '.webp'],
   career_article_image: ['.jpg', '.jpeg', '.png', '.webp'],
+  chat_attachment: ['.pdf', '.jpg', '.jpeg', '.png', '.webp', '.doc', '.docx'],
 };
 
 export const BLOCKED_EXTENSIONS = [

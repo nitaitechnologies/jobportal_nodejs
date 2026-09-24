@@ -27,6 +27,7 @@ GET /api/v1/jobs/:slug
 | `location` | Active location slug or exact name (includes descendants) |
 | `workMode` | `onsite` \| `hybrid` \| `remote` |
 | `employmentType` | `full-time` \| `part-time` \| `contract` \| `internship` \| `temporary` |
+| `fresherMode` | `fresher` \| `internship` \| `no-experience` \| `training` \| `entry-level` \| `graduate` \| `10th` \| `12th` (see [fresher-mode.md](./fresher-mode.md)) |
 | `experienceMin` / `experienceMax` | Overlap filter on job experience range (0–50, min ≤ max) |
 | `salaryMin` / `salaryMax` | Overlap filter on job salary range (min ≤ max) |
 | `featured` | `true` / `false` |

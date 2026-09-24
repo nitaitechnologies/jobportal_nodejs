@@ -8,12 +8,18 @@ export interface PlanSeedDef {
   billingCycle: BillingCycle;
   durationDays: number;
   sortOrder: number;
-  features: { featuredJobs: boolean; candidateContact: boolean };
+  features: {
+    featuredJobs: boolean;
+    candidateContact: boolean;
+    advancedCandidateSearch: boolean;
+  };
   limits: {
     jobPostLimit: number;
     activeJobLimit: number;
     featuredJobLimit: number;
     jobListingLifetimeDays: number;
+    contactUnlockLimit: number;
+    freeSearchResultLimit: number;
   };
 }
 
@@ -25,12 +31,14 @@ export const PLAN_DEFS: PlanSeedDef[] = [
     billingCycle: 'monthly',
     durationDays: 30,
     sortOrder: 1,
-    features: { featuredJobs: false, candidateContact: false },
+    features: { featuredJobs: false, candidateContact: false, advancedCandidateSearch: false },
     limits: {
       jobPostLimit: 3,
       activeJobLimit: 2,
       featuredJobLimit: 0,
       jobListingLifetimeDays: 10,
+      contactUnlockLimit: 0,
+      freeSearchResultLimit: 25,
     },
   },
   {
@@ -40,12 +48,14 @@ export const PLAN_DEFS: PlanSeedDef[] = [
     billingCycle: 'monthly',
     durationDays: 30,
     sortOrder: 2,
-    features: { featuredJobs: false, candidateContact: true },
+    features: { featuredJobs: false, candidateContact: true, advancedCandidateSearch: true },
     limits: {
       jobPostLimit: 15,
       activeJobLimit: 10,
       featuredJobLimit: 1,
       jobListingLifetimeDays: 30,
+      contactUnlockLimit: 20,
+      freeSearchResultLimit: 0,
     },
   },
   {
@@ -55,12 +65,14 @@ export const PLAN_DEFS: PlanSeedDef[] = [
     billingCycle: 'monthly',
     durationDays: 30,
     sortOrder: 3,
-    features: { featuredJobs: true, candidateContact: true },
+    features: { featuredJobs: true, candidateContact: true, advancedCandidateSearch: true },
     limits: {
       jobPostLimit: 50,
       activeJobLimit: 30,
       featuredJobLimit: 5,
       jobListingLifetimeDays: 45,
+      contactUnlockLimit: 100,
+      freeSearchResultLimit: 0,
     },
   },
   {
@@ -70,12 +82,14 @@ export const PLAN_DEFS: PlanSeedDef[] = [
     billingCycle: 'yearly',
     durationDays: 365,
     sortOrder: 4,
-    features: { featuredJobs: true, candidateContact: true },
+    features: { featuredJobs: true, candidateContact: true, advancedCandidateSearch: true },
     limits: {
       jobPostLimit: 200,
       activeJobLimit: 100,
       featuredJobLimit: 20,
       jobListingLifetimeDays: 60,
+      contactUnlockLimit: 500,
+      freeSearchResultLimit: 0,
     },
   },
 ];

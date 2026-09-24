@@ -104,6 +104,16 @@ function evaluateSections(
   if (!candidate.employmentStatus) {
     preferenceMissing.push('employmentStatus');
   }
+  if (
+    !hasItems(candidate.preferredJobTypes) &&
+    !hasItems(candidate.preferredWorkModes) &&
+    !hasItems(candidate.preferredRoles)
+  ) {
+    preferenceMissing.push('preferredJobTypes|preferredWorkModes|preferredRoles');
+  }
+  if (candidate.expectedSalary == null && candidate.currentSalary == null) {
+    preferenceMissing.push('expectedSalary');
+  }
 
   const additionalMissing: string[] = [];
   const hasAdditional =

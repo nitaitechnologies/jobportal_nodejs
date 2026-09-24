@@ -3,6 +3,18 @@
 export const USER_ROLES = ['candidate', 'employer', 'admin'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
+/** Company-scoped recruiter roles (sheet 161). */
+export const EMPLOYER_TEAM_ROLES = ['owner', 'hr', 'recruiter'] as const;
+export type EmployerTeamRole = (typeof EMPLOYER_TEAM_ROLES)[number];
+
+export const EMPLOYER_TEAM_INVITE_STATUSES = [
+  'pending',
+  'accepted',
+  'revoked',
+  'expired',
+] as const;
+export type EmployerTeamInviteStatus = (typeof EMPLOYER_TEAM_INVITE_STATUSES)[number];
+
 export const USER_STATUSES = ['active', 'inactive', 'suspended', 'deleted'] as const;
 export type UserStatus = (typeof USER_STATUSES)[number];
 
@@ -53,6 +65,28 @@ export const EMPLOYMENT_TYPES = [
   'temporary',
 ] as const;
 export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
+
+/** Candidate job-type prefs (includes FE `work-from-home`). */
+export const CANDIDATE_JOB_TYPES = [...EMPLOYMENT_TYPES, 'work-from-home'] as const;
+export type CandidateJobType = (typeof CANDIDATE_JOB_TYPES)[number];
+
+export const WORKING_DAY_PREFERENCES = ['weekdays', 'weekends', 'flexible'] as const;
+export type WorkingDayPreference = (typeof WORKING_DAY_PREFERENCES)[number];
+
+export const SHIFT_PREFERENCES = ['day', 'night', 'rotating', 'flexible'] as const;
+export type ShiftPreference = (typeof SHIFT_PREFERENCES)[number];
+
+/** Job posting shift options (public job search filter). */
+export const JOB_SHIFTS = [
+  'morning',
+  'day',
+  'evening',
+  'night',
+  'weekend',
+  'flexible',
+  'rotating',
+] as const;
+export type JobShift = (typeof JOB_SHIFTS)[number];
 
 export const SALARY_PERIODS = ['monthly', 'yearly', 'hourly', 'daily'] as const;
 export type SalaryPeriod = (typeof SALARY_PERIODS)[number];
@@ -106,17 +140,58 @@ export type InterviewStatus = (typeof INTERVIEW_STATUSES)[number];
 /** In-app notification types (B17). */
 export const NOTIFICATION_TYPES = [
   'APPLICATION_SUBMITTED',
+  'APPLICATION_CONFIRMATION',
   'APPLICATION_STATUS_CHANGED',
+  'APPLICATION_SHORTLISTED',
+  'RECRUITER_VIEWED_PROFILE',
+  'RECRUITER_INVITATION',
+  'RECONTACT_REMINDER',
   'INTERVIEW_SCHEDULED',
   'INTERVIEW_RESCHEDULED',
   'INTERVIEW_CANCELLED',
   'INTERVIEW_CONFIRMED',
   'INTERVIEW_DECLINED',
+  'INTERVIEW_REMINDER_24H',
+  'INTERVIEW_REMINDER_1H',
   'JOB_STATUS_CHANGED',
+  'JOB_EXPIRY_REMINDER',
+  'JOB_PERFORMANCE',
+  'MATCHING_CANDIDATE',
+  'CANDIDATE_RECOMMENDATION',
+  'SUBSCRIPTION_EXPIRY',
   'REPORT_STATUS_CHANGED',
+  'JOB_ALERT_INSTANT',
+  'JOB_ALERT_DAILY',
+  'JOB_ALERT_WEEKLY',
+  'JOB_MATCH',
+  'JOB_NEARBY',
+  'JOB_SALARY_MATCH',
+  'HOT_JOB',
+  'JOB_DEADLINE',
+  'GOVERNMENT_JOB',
+  'CHAT_MESSAGE',
+  'CHAT_FILE',
+  'CHAT_RESUME_SHARE',
+  'PAYMENT_SUCCEEDED',
+  'PAYMENT_FAILED',
+  'PAYMENT_REFUND',
   'SYSTEM',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+/** Saved-search / job-alert digest cadence. */
+export const ALERT_FREQUENCIES = ['instant', 'daily', 'weekly', 'off'] as const;
+export type AlertFrequency = (typeof ALERT_FREQUENCIES)[number];
+
+/** Employer → candidate job invitation lifecycle. */
+export const INVITATION_STATUSES = [
+  'pending',
+  'accepted',
+  'declined',
+  'cancelled',
+  'expired',
+] as const;
+export type InvitationStatus = (typeof INVITATION_STATUSES)[number];
 
 export const ARTICLE_STATUSES = ['draft', 'published', 'archived'] as const;
 export type ArticleStatus = (typeof ARTICLE_STATUSES)[number];
@@ -127,6 +202,7 @@ export const REPORT_TARGET_TYPES = [
   'employer',
   'candidate',
   'user',
+  'platform',
 ] as const;
 export type ReportTargetType = (typeof REPORT_TARGET_TYPES)[number];
 
@@ -138,7 +214,7 @@ export const REPORT_STATUSES = [
 ] as const;
 export type ReportStatus = (typeof REPORT_STATUSES)[number];
 
-/** Controlled report reasons (B19). */
+/** Controlled report reasons (B19) + support/tech (sheet 374, 377). */
 export const REPORT_REASONS = [
   'fraud',
   'scam',
@@ -150,9 +226,32 @@ export const REPORT_REASONS = [
   'inappropriate_content',
   'duplicate_listing',
   'privacy_concern',
+  'technical_issue',
+  'account_help',
+  'billing_help',
   'other',
 ] as const;
 export type ReportReason = (typeof REPORT_REASONS)[number];
+
+/** Support ticket categories for raise-ticket / contact form (sheet 374). */
+export const SUPPORT_TICKET_CATEGORIES = [
+  'candidate-support',
+  'employer-support',
+  'job-listing',
+  'technical-issue',
+  'billing',
+  'partnership',
+  'other',
+] as const;
+export type SupportTicketCategory = (typeof SUPPORT_TICKET_CATEGORIES)[number];
+
+export const SUPPORT_TICKET_STATUSES = [
+  'open',
+  'in_progress',
+  'resolved',
+  'closed',
+] as const;
+export type SupportTicketStatus = (typeof SUPPORT_TICKET_STATUSES)[number];
 
 export const SUBSCRIPTION_STATUSES = [
   'active',
@@ -171,6 +270,39 @@ export type PlanStatus = (typeof PLAN_STATUSES)[number];
 
 export const CURRENCIES = ['INR'] as const;
 export type CurrencyCode = (typeof CURRENCIES)[number];
+
+/** Subscription coupon discount types (sheet 348). */
+export const COUPON_TYPES = ['percent', 'fixed'] as const;
+export type CouponType = (typeof COUPON_TYPES)[number];
+
+export const COUPON_STATUSES = ['active', 'inactive'] as const;
+export type CouponStatus = (typeof COUPON_STATUSES)[number];
+
+/** Simulated payment kinds (sheet 359–365) — no live gateway yet. */
+export const PAYMENT_KINDS = ['subscription', 'credits'] as const;
+export type PaymentKind = (typeof PAYMENT_KINDS)[number];
+
+export const PAYMENT_STATUSES = [
+  'pending',
+  'succeeded',
+  'failed',
+  'refunded',
+  'partially_refunded',
+] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
+export const INVOICE_STATUSES = ['draft', 'issued', 'void', 'refunded'] as const;
+export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
+
+export const WALLET_TXN_TYPES = [
+  'purchase',
+  'spend_unlock',
+  'spend_boost',
+  'spend_featured',
+  'refund',
+  'adjustment',
+] as const;
+export type WalletTxnType = (typeof WALLET_TXN_TYPES)[number];
 
 export const ADMIN_ROLES = [
   'super_admin',
@@ -209,6 +341,8 @@ export const ANALYTICS_EVENT_TYPES = [
   // Saved jobs
   'job_saved',
   'job_unsaved',
+  // Job alerts
+  'job_alert_sent',
   // Interviews
   'interview_scheduled',
   'interview_rescheduled',

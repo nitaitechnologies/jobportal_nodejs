@@ -60,7 +60,16 @@ export async function createTestLocationTree(admin: AdminSession) {
 
 export async function createPublishedJob(
   employer: EmployerSession,
-  opts: { categoryId: string; locationId: string; title?: string },
+  opts: {
+    categoryId: string;
+    locationId: string;
+    title?: string;
+    description?: string;
+    employmentType?: string;
+    experience?: { min: number; max?: number };
+    education?: string;
+    skills?: string[];
+  },
 ) {
   const deadline = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
   const create = await api()
@@ -68,15 +77,18 @@ export async function createPublishedJob(
     .set(employer.header)
     .send({
       title: opts.title ?? `Node Developer ${Date.now()}`,
-      description: 'We are hiring an experienced Node.js developer for our platform team.',
+      description:
+        opts.description ??
+        'We are hiring an experienced Node.js developer for our platform team.',
       workMode: 'remote',
-      employmentType: 'full-time',
+      employmentType: opts.employmentType ?? 'full-time',
       categoryId: opts.categoryId,
       locationId: opts.locationId,
-      experience: { min: 1, max: 5 },
+      experience: opts.experience ?? { min: 1, max: 5 },
+      education: opts.education ?? '',
       salary: { min: 500000, max: 1200000, period: 'yearly' },
       deadline,
-      skills: ['nodejs', 'typescript'],
+      skills: opts.skills ?? ['nodejs', 'typescript'],
     });
   expect(create.status).toBe(201);
   const job = create.body.data.job ?? create.body.data;

@@ -1,11 +1,20 @@
 import { Router } from 'express';
+import { aiResumeController } from '../controllers/aiResume.controller';
 import { candidateProfileController } from '../controllers/candidateProfile.controller';
 import { mediaController } from '../controllers/media.controller';
 import { authenticate } from '../middlewares/auth.middleware';
 import { requireCandidate } from '../middlewares/candidateAuth.middleware';
-import { requireVideoResumeEnabled } from '../middlewares/featureFlag.middleware';
+import {
+  requireAiResumeEnabled,
+  requireVideoResumeEnabled,
+} from '../middlewares/featureFlag.middleware';
+import { aiResumeRateLimiter } from '../middlewares/rateLimit.middleware';
 import { requireRole } from '../middlewares/role.middleware';
 import { uploadSingle } from '../middlewares/upload.middleware';
+import {
+  validateAiResumeBuild,
+  validateAiResumeTailor,
+} from '../middlewares/aiResumeValidate.middleware';
 import {
   validateCandidateProfileUpdate,
   validateCertificationCreate,
@@ -50,6 +59,10 @@ candidateProfileRouter.post('/resume', uploadSingle('file'), (req, res, next) =>
   void mediaController.uploadCandidateResume(req, res, next);
 });
 
+candidateProfileRouter.get('/resumes', (req, res, next) => {
+  void mediaController.listSelectableResumes(req, res, next);
+});
+
 candidateProfileRouter.get('/resume', (req, res, next) => {
   void mediaController.getCandidateResume(req, res, next);
 });
@@ -61,6 +74,26 @@ candidateProfileRouter.get('/resume/download', (req, res, next) => {
 candidateProfileRouter.delete('/resume', (req, res, next) => {
   void mediaController.deleteCandidateResume(req, res, next);
 });
+
+candidateProfileRouter.post(
+  '/resume/ai/build',
+  requireAiResumeEnabled,
+  aiResumeRateLimiter,
+  validateAiResumeBuild,
+  (req, res, next) => {
+    void aiResumeController.build(req, res, next);
+  },
+);
+
+candidateProfileRouter.post(
+  '/resume/ai/tailor',
+  requireAiResumeEnabled,
+  aiResumeRateLimiter,
+  validateAiResumeTailor,
+  (req, res, next) => {
+    void aiResumeController.tailor(req, res, next);
+  },
+);
 
 candidateProfileRouter.post(
   '/video-resume',

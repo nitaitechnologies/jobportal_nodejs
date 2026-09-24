@@ -13,14 +13,16 @@ import {
   getEmployerEntitlements,
   isSubscriptionCurrentlyActive,
 } from './entitlement.service';
+import { resolveCouponPricing } from './coupon.service';
 import { trackSafely } from './analytics.service';
 import type {
   AdminSubscriptionCreateInput,
+  EmployerAutoRenewUpdateInput,
   EmployerSubscriptionQuery,
 } from '../validators/subscription.validator';
 
 /**
- * Core activation used by admin assignment and future payment verification.
+ * Core activation used by admin assignment, auto-renew, and future payment verification.
  * Dates, status, and price snapshot are always server-controlled.
  */
 export async function activateSubscription(input: {
@@ -28,6 +30,8 @@ export async function activateSubscription(input: {
   companyId: string;
   planId: string;
   autoRenew?: boolean;
+  couponCode?: string;
+  actorRole?: 'admin' | 'system' | 'employer';
 }) {
   const plan = await SubscriptionPlan.findById(input.planId);
   if (!plan) {
@@ -51,6 +55,21 @@ export async function activateSubscription(input: {
   }
   if (!employer || employer.status !== 'active') {
     throw new AppError('Employer profile not found for this company', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  let amount = plan.price;
+  let originalAmount: number | null = null;
+  let discountAmount = 0;
+  let couponCode = '';
+
+  if (input.couponCode?.trim()) {
+    const pricing = await resolveCouponPricing(input.couponCode.trim(), input.planId, {
+      consume: true,
+    });
+    amount = pricing.finalAmount;
+    originalAmount = pricing.originalAmount;
+    discountAmount = pricing.discountAmount;
+    couponCode = pricing.code;
   }
 
   const startDate = new Date();
@@ -80,19 +99,25 @@ export async function activateSubscription(input: {
     status: 'active',
     startDate,
     endDate,
-    amount: plan.price,
+    amount,
+    originalAmount,
+    discountAmount,
+    couponCode,
     currency: plan.currency,
     billingCycle: plan.billingCycle,
     autoRenew: Boolean(input.autoRenew),
     features: {
       featuredJobs: plan.features?.featuredJobs ?? false,
       candidateContact: plan.features?.candidateContact ?? false,
+      advancedCandidateSearch: plan.features?.advancedCandidateSearch ?? false,
     },
     limits: {
       jobPostLimit: plan.limits?.jobPostLimit ?? 5,
       activeJobLimit: plan.limits?.activeJobLimit ?? 3,
       featuredJobLimit: plan.limits?.featuredJobLimit ?? 0,
       jobListingLifetimeDays: plan.limits?.jobListingLifetimeDays ?? (plan.price === 0 ? 10 : 0),
+      contactUnlockLimit: plan.limits?.contactUnlockLimit ?? 0,
+      freeSearchResultLimit: plan.limits?.freeSearchResultLimit ?? (plan.price === 0 ? 25 : 0),
     },
     paymentProvider: '',
     externalSubscriptionId: '',
@@ -101,7 +126,7 @@ export async function activateSubscription(input: {
   await trackSafely({
     eventType: previous ? 'subscription_changed' : 'subscription_activated',
     userId: user._id,
-    actorRole: 'admin',
+    actorRole: input.actorRole ?? 'admin',
     entityType: 'subscription',
     entityId: subscription._id,
     companyId: company._id,
@@ -110,6 +135,9 @@ export async function activateSubscription(input: {
       planId: plan._id.toString(),
       planSlug: plan.slug,
       previousPlan: previous?.plan ?? null,
+      couponCode: couponCode || null,
+      discountAmount,
+      autoRenew: Boolean(input.autoRenew),
     },
   });
 
@@ -173,6 +201,77 @@ export class SubscriptionService {
     return { entitlements };
   }
 
+  /** Employer toggle for auto-renew on the live company subscription (347). */
+  async updateAutoRenew(
+    employer: AuthenticatedEmployer,
+    input: EmployerAutoRenewUpdateInput,
+  ) {
+    const subscription = await findCurrentCompanySubscription(employer.companyId);
+    if (!subscription || !isSubscriptionCurrentlyActive(subscription)) {
+      throw new AppError(
+        'No active subscription to update',
+        HTTP_STATUS.BAD_REQUEST,
+        [{ path: 'autoRenew', message: 'Activate a paid plan before toggling auto-renew' }],
+      );
+    }
+
+    subscription.autoRenew = input.autoRenew;
+    await subscription.save();
+
+    await trackSafely({
+      eventType: 'subscription_changed',
+      userId: employer.userId,
+      actorRole: 'employer',
+      entityType: 'subscription',
+      entityId: subscription._id,
+      companyId: subscription.companyId,
+      employerId: employer.employerId,
+      metadata: { autoRenew: input.autoRenew },
+    });
+
+    return { subscription: mapEmployerSubscription(subscription) };
+  }
+
+  /**
+   * Extend subscriptions with autoRenew=true that are within the renew window
+   * (ended or ending within the next day).
+   */
+  async processAutoRenewals(opts: { graceHours?: number } = {}) {
+    const graceHours = opts.graceHours ?? 24;
+    const cutoff = new Date(Date.now() + graceHours * 60 * 60 * 1000);
+
+    const due = await Subscription.find({
+      autoRenew: true,
+      status: { $in: ['active', 'trial'] },
+      planId: { $ne: null },
+      endDate: { $ne: null, $lte: cutoff },
+    }).limit(200);
+
+    let renewed = 0;
+    let failed = 0;
+
+    for (const row of due) {
+      if (!row.planId) {
+        failed += 1;
+        continue;
+      }
+      try {
+        await activateSubscription({
+          userId: row.userId.toString(),
+          companyId: row.companyId.toString(),
+          planId: row.planId.toString(),
+          autoRenew: true,
+          actorRole: 'system',
+        });
+        renewed += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+
+    return { scanned: due.length, renewed, failed };
+  }
+
   async adminActivate(input: AdminSubscriptionCreateInput) {
     const employer = await Employer.findOne({ companyId: input.companyId }).select('userId status');
     if (!employer || employer.status !== 'active') {
@@ -184,6 +283,8 @@ export class SubscriptionService {
       companyId: input.companyId,
       planId: input.planId,
       autoRenew: input.autoRenew,
+      couponCode: input.couponCode,
+      actorRole: 'admin',
     });
 
     return { subscription: mapEmployerSubscription(subscription) };

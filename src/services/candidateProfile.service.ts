@@ -122,6 +122,17 @@ export class CandidateProfileService {
       candidate.longitude = place.longitude;
     }
 
+    /** Fresher option: clear experience path so profile completion stays consistent. */
+    if (input.isFresher === true) {
+      candidate.workExperience = [] as unknown as typeof candidate.workExperience;
+      candidate.totalExperience = 0;
+      candidate.currentJobTitle = '';
+      candidate.currentCompany = '';
+      if (input.employmentStatus === undefined) {
+        candidate.employmentStatus = 'looking';
+      }
+    }
+
     const candidateFields: Array<keyof CandidateProfileUpdateInput> = [
       'headline',
       'bio',
@@ -130,11 +141,19 @@ export class CandidateProfileService {
       'gender',
       'currentLocation',
       'preferredLocations',
+      'preferredRoles',
+      'preferredCategories',
+      'preferredJobTypes',
+      'preferredWorkModes',
+      'preferredWorkingDays',
+      'preferredShifts',
       'currentJobTitle',
       'currentCompany',
       'totalExperience',
+      'currentSalary',
       'expectedSalary',
       'noticePeriod',
+      'openToWork',
       'employmentStatus',
       'skills',
       'education',
@@ -144,6 +163,8 @@ export class CandidateProfileService {
       'portfolio',
       'socialLinks',
       'profileVisibility',
+      'allowEmployerContact',
+      'resumeVisibleToEmployers',
       'resume',
     ];
 
@@ -164,11 +185,18 @@ export class CandidateProfileService {
       }
 
       if (field === 'workExperience' && Array.isArray(input.workExperience)) {
+        if (input.isFresher === true) {
+          continue;
+        }
         candidate.workExperience = input.workExperience.map((item) => ({
           ...item,
           endDate: item.isCurrent ? undefined : item.endDate ?? undefined,
         })) as typeof candidate.workExperience;
         candidate.totalExperience = deriveTotalExperienceYears(candidate.workExperience);
+        continue;
+      }
+
+      if (field === 'totalExperience' && input.isFresher === true) {
         continue;
       }
 
@@ -186,6 +214,11 @@ export class CandidateProfileService {
 
       if (field === 'expectedSalary') {
         candidate.expectedSalary = input.expectedSalary ?? undefined;
+        continue;
+      }
+
+      if (field === 'currentSalary') {
+        candidate.currentSalary = input.currentSalary ?? undefined;
         continue;
       }
 

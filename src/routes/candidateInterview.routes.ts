@@ -7,6 +7,7 @@ import {
   validateCandidateInterviewQuery,
   validateInterviewDecline,
   validateInterviewIdParam,
+  validateInterviewReschedule,
 } from '../middlewares/interviewValidate.middleware';
 
 const candidateInterviewRouter = Router();
@@ -31,6 +32,15 @@ candidateInterviewRouter.patch(
   validateInterviewDecline,
   (req, res, next) => {
     void interviewController.decline(req, res, next);
+  },
+);
+
+candidateInterviewRouter.patch(
+  '/:id/reschedule',
+  validateInterviewIdParam,
+  validateInterviewReschedule,
+  (req, res, next) => {
+    void interviewController.candidateReschedule(req, res, next);
   },
 );
 

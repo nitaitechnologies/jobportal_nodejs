@@ -3,10 +3,12 @@ import { adminManagementController } from '../controllers/adminManagement.contro
 import { authenticate } from '../middlewares/auth.middleware';
 import { requireAdmin, requirePermission } from '../middlewares/adminAuth.middleware';
 import {
+  validateAdminCompanyDocumentDownloadParam,
   validateAdminCompanyListQuery,
   validateAdminCompanyStatus,
   validateAdminCompanyVerification,
   validateAdminIdParam,
+  validateAdminJobFeature,
 } from '../middlewares/adminManagementValidate.middleware';
 import { PERMISSIONS } from '../constants/permissions';
 
@@ -20,6 +22,15 @@ router.get('/', requirePermission(PERMISSIONS.COMPANIES_READ), validateAdminComp
 router.get('/:id', requirePermission(PERMISSIONS.COMPANIES_READ), validateAdminIdParam, (req, res, next) => {
   void adminManagementController.getCompany(req, res, next);
 });
+
+router.get(
+  '/:id/documents/:type/download',
+  requirePermission(PERMISSIONS.COMPANIES_READ),
+  validateAdminCompanyDocumentDownloadParam,
+  (req, res, next) => {
+    void adminManagementController.downloadCompanyDocument(req, res, next);
+  },
+);
 
 router.patch(
   '/:id/status',
@@ -38,6 +49,16 @@ router.patch(
   validateAdminCompanyVerification,
   (req, res, next) => {
     void adminManagementController.updateCompanyVerification(req, res, next);
+  },
+);
+
+router.patch(
+  '/:id/feature',
+  requirePermission(PERMISSIONS.COMPANIES_UPDATE),
+  validateAdminIdParam,
+  validateAdminJobFeature,
+  (req, res, next) => {
+    void adminManagementController.updateCompanyFeatured(req, res, next);
   },
 );
 

@@ -43,6 +43,61 @@ export const applicationStatusUpdateSchema = z
     }
   });
 
+export const applicationNotesUpdateSchema = z
+  .object({
+    text: z.string().trim().min(1).max(5000),
+  })
+  .strict();
+
+/** Internal recruiter rating 1–5 (sheet 332). */
+export const applicationInternalRatingSchema = z
+  .object({
+    rating: z.union([z.number().int().min(1).max(5), z.null()]),
+  })
+  .strict();
+
+export const applicationNoteIdParamSchema = z.object({
+  id: objectIdSchema,
+  noteId: z.union([objectIdSchema, z.literal('server-note')]),
+});
+
+export const applicationBulkStatusSchema = z
+  .object({
+    ids: z.array(objectIdSchema).min(1).max(50),
+    status: z.enum(APPLICATION_STATUSES),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.status === 'applied' || value.status === 'withdrawn') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['status'],
+        message: 'Employers cannot set this status through this endpoint',
+      });
+    }
+  });
+
+export const applicationBulkMessageSchema = z
+  .object({
+    ids: z.array(objectIdSchema).min(1).max(50),
+    body: z.string().trim().min(1).max(4000),
+  })
+  .strict();
+
+export const employerApplicationStatsQuerySchema = z
+  .object({
+    jobId: objectIdSchema.optional(),
+  })
+  .strict();
+
+export const employerApplicationExportQuerySchema = z
+  .object({
+    status: z.enum(APPLICATION_STATUSES).optional(),
+    jobId: objectIdSchema.optional(),
+    q: z.string().trim().max(120).optional(),
+  })
+  .strict();
+
 export const candidateApplicationQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).optional().default(1),
@@ -58,6 +113,8 @@ export const employerApplicationQuerySchema = z
     limit: z.coerce.number().int().min(1).max(100).optional().default(20),
     status: z.enum(APPLICATION_STATUSES).optional(),
     jobId: objectIdSchema.optional(),
+    /** Keyword search across candidate name, headline, skills, job title. */
+    q: z.string().trim().max(120).optional(),
   })
   .strict();
 
@@ -71,6 +128,12 @@ export const jobIdParamSchema = z.object({
 
 export type ApplicationApplyInput = z.infer<typeof applicationApplySchema>;
 export type ApplicationStatusUpdateInput = z.infer<typeof applicationStatusUpdateSchema>;
+export type ApplicationNotesUpdateInput = z.infer<typeof applicationNotesUpdateSchema>;
+export type ApplicationInternalRatingInput = z.infer<typeof applicationInternalRatingSchema>;
+export type ApplicationBulkStatusInput = z.infer<typeof applicationBulkStatusSchema>;
+export type ApplicationBulkMessageInput = z.infer<typeof applicationBulkMessageSchema>;
+export type EmployerApplicationStatsQuery = z.infer<typeof employerApplicationStatsQuerySchema>;
+export type EmployerApplicationExportQuery = z.infer<typeof employerApplicationExportQuerySchema>;
 export type CandidateApplicationQuery = z.infer<typeof candidateApplicationQuerySchema>;
 export type EmployerApplicationQuery = z.infer<typeof employerApplicationQuerySchema>;
 
@@ -83,9 +146,12 @@ export const APPLICATION_FORBIDDEN_FIELDS = [
   'appliedAt',
   'viewedAt',
   'shortlistedAt',
+  'interviewAt',
   'rejectedAt',
   'hiredAt',
   'notes',
+  'internalNotes',
+  'statusHistory',
   'source',
   'createdAt',
   'updatedAt',

@@ -1,3 +1,4 @@
+import { env } from '../config/env';
 import type { AccountStatus, AdminRole, VerificationStatus } from '../constants/enums';
 import type { Permission } from '../constants/permissions';
 
@@ -151,11 +152,25 @@ export function mapAdminCompanyResponse(company: {
   website?: string | null;
   status: string;
   verificationStatus: string;
+  featured?: boolean | null;
+  featuredAt?: Date | null;
+  pan?: string | null;
+  gstin?: string | null;
+  documents?: Array<{
+    type: string;
+    mediaUrl: string;
+    status: string;
+    submittedAt?: Date | null;
+    reviewedAt?: Date | null;
+    rejectionReason?: string;
+  }> | null;
   createdAt?: Date;
   updatedAt?: Date;
 }) {
+  const companyId = company._id.toString();
+  const documents = company.documents ?? [];
   return {
-    id: company._id.toString(),
+    id: companyId,
     name: company.name,
     slug: company.slug,
     industry: company.industry ?? '',
@@ -163,6 +178,25 @@ export function mapAdminCompanyResponse(company: {
     website: company.website ?? '',
     status: company.status,
     verificationStatus: company.verificationStatus,
+    featured: Boolean(company.featured),
+    featuredAt: company.featuredAt ?? null,
+    pan: (company.pan ?? '').trim(),
+    gstin: (company.gstin ?? '').trim(),
+    documents: documents.map((doc) => {
+      const hasFile = Boolean(doc.mediaUrl?.trim());
+      return {
+        type: doc.type,
+        status: doc.status,
+        submittedAt: doc.submittedAt ?? null,
+        reviewedAt: doc.reviewedAt ?? null,
+        rejectionReason: doc.rejectionReason ?? '',
+        hasFile,
+        // Private media refs are not browser-openable — use controlled download.
+        downloadUrl: hasFile
+          ? `${env.apiPrefix}/admin/companies/${companyId}/documents/${doc.type}/download`
+          : null,
+      };
+    }),
     createdAt: company.createdAt ?? null,
     updatedAt: company.updatedAt ?? null,
   };

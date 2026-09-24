@@ -6,8 +6,10 @@ import { requireRole } from '../middlewares/role.middleware';
 import {
   validateEmployerInterviewQuery,
   validateInterviewCancel,
+  validateInterviewComplete,
   validateInterviewCreate,
   validateInterviewIdParam,
+  validateInterviewNoShow,
   validateInterviewReschedule,
   validateInterviewUpdate,
 } from '../middlewares/interviewValidate.middleware';
@@ -55,8 +57,22 @@ employerInterviewRouter.patch(
   },
 );
 
-employerInterviewRouter.patch('/:id/complete', validateInterviewIdParam, (req, res, next) => {
-  void interviewController.complete(req, res, next);
-});
+employerInterviewRouter.patch(
+  '/:id/complete',
+  validateInterviewIdParam,
+  validateInterviewComplete,
+  (req, res, next) => {
+    void interviewController.complete(req, res, next);
+  },
+);
+
+employerInterviewRouter.patch(
+  '/:id/no-show',
+  validateInterviewIdParam,
+  validateInterviewNoShow,
+  (req, res, next) => {
+    void interviewController.markNoShow(req, res, next);
+  },
+);
 
 export default employerInterviewRouter;

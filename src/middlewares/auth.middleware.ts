@@ -3,12 +3,18 @@ import jwt from 'jsonwebtoken';
 import { HTTP_STATUS } from '../constants';
 import { AppError } from '../utils/AppError';
 import { verifyAccessToken } from '../utils/jwt';
+import { authSessionService } from '../services/authSession.service';
 import '../types/express';
 
 /**
  * Authentication: verify Bearer JWT and attach req.auth.
+ * When `jti` is present, the auth session must still be active (sheet 163–164).
  */
-export function authenticate(req: Request, _res: Response, next: NextFunction): void {
+export async function authenticate(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> {
   try {
     const header = req.headers.authorization;
 
@@ -24,10 +30,15 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
 
     const payload = verifyAccessToken(token);
 
+    if (payload.jti) {
+      await authSessionService.assertActive(payload.jti, payload.userId);
+    }
+
     req.auth = {
       userId: payload.userId,
       role: payload.role,
       ...(payload.adminUserId ? { adminUserId: payload.adminUserId } : {}),
+      ...(payload.jti ? { sessionId: payload.jti } : {}),
     };
 
     next();
@@ -48,5 +59,41 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
     }
 
     next(new AppError('Authentication failed', HTTP_STATUS.UNAUTHORIZED));
+  }
+}
+
+/**
+ * Optional auth: attach req.auth when a valid Bearer token is present; otherwise continue.
+ */
+export async function optionalAuthenticate(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const header = req.headers.authorization;
+    if (!header || !header.startsWith('Bearer ')) {
+      next();
+      return;
+    }
+    const token = header.slice('Bearer '.length).trim();
+    if (!token) {
+      next();
+      return;
+    }
+    const payload = verifyAccessToken(token);
+    if (payload.jti) {
+      await authSessionService.assertActive(payload.jti, payload.userId);
+    }
+    req.auth = {
+      userId: payload.userId,
+      role: payload.role,
+      ...(payload.adminUserId ? { adminUserId: payload.adminUserId } : {}),
+      ...(payload.jti ? { sessionId: payload.jti } : {}),
+    };
+    next();
+  } catch {
+    // Invalid token → treat as guest for public support form.
+    next();
   }
 }

@@ -9,6 +9,10 @@ const planLimitsSchema = new Schema(
     featuredJobLimit: { type: Number, min: 0, default: 0 },
     /** Max days a published listing stays live (0 = use application deadline only). Free = 10. */
     jobListingLifetimeDays: { type: Number, min: 0, max: 3660, default: 0 },
+    /** Max candidate contact unlocks per billing period. */
+    contactUnlockLimit: { type: Number, min: 0, default: 0 },
+    /** Max candidate search results for free/basic search (sheet 371). 0 = unlimited. */
+    freeSearchResultLimit: { type: Number, min: 0, default: 25 },
   },
   { _id: false },
 );
@@ -17,6 +21,8 @@ const planFeaturesSchema = new Schema(
   {
     featuredJobs: { type: Boolean, default: false },
     candidateContact: { type: Boolean, default: false },
+    /** Full candidate database filters + higher result caps (sheet 372). */
+    advancedCandidateSearch: { type: Boolean, default: false },
   },
   { _id: false },
 );

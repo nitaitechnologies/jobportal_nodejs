@@ -15,9 +15,26 @@ export interface ApplicationLike {
   appliedAt?: Date | null;
   viewedAt?: Date | null;
   shortlistedAt?: Date | null;
+  interviewAt?: Date | null;
   rejectedAt?: Date | null;
   hiredAt?: Date | null;
   notes?: string | null;
+  internalNotes?: Array<{
+    _id?: { toString(): string };
+    text?: string;
+    authorName?: string | null;
+    authorUserId?: { toString(): string } | null;
+    createdAt?: Date | null;
+    updatedAt?: Date | null;
+  }> | null;
+  internalRating?: number | null;
+  statusHistory?: Array<{
+    from?: string;
+    to?: string;
+    at?: Date | null;
+    byName?: string | null;
+    auto?: boolean | null;
+  }> | null;
   source?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
@@ -40,6 +57,11 @@ export function mapCandidateApplication(
     hasVideoResume: env.enableVideoResume && Boolean(videoRaw.trim()),
     answers: application.answers ?? [],
     appliedAt: application.appliedAt ?? application.createdAt ?? null,
+    viewedAt: application.viewedAt ?? null,
+    shortlistedAt: application.shortlistedAt ?? null,
+    interviewAt: application.interviewAt ?? null,
+    rejectedAt: application.rejectedAt ?? null,
+    hiredAt: application.hiredAt ?? null,
     createdAt: application.createdAt,
     updatedAt: application.updatedAt,
     job: extras?.job ?? null,
@@ -75,9 +97,27 @@ export function mapEmployerApplication(
     appliedAt: application.appliedAt ?? application.createdAt ?? null,
     viewedAt: application.viewedAt ?? null,
     shortlistedAt: application.shortlistedAt ?? null,
+    interviewAt: application.interviewAt ?? null,
     rejectedAt: application.rejectedAt ?? null,
     hiredAt: application.hiredAt ?? null,
     notes: application.notes ?? '',
+    internalNotes: (application.internalNotes ?? []).map((note) => ({
+      id: note._id?.toString() ?? '',
+      text: note.text ?? '',
+      authorName: note.authorName ?? 'Hiring team',
+      authorUserId: note.authorUserId?.toString() ?? null,
+      createdAt: note.createdAt ?? null,
+      updatedAt: note.updatedAt ?? null,
+    })),
+    internalRating:
+      typeof application.internalRating === 'number' ? application.internalRating : null,
+    statusHistory: (application.statusHistory ?? []).map((entry) => ({
+      from: entry.from ?? '',
+      to: entry.to ?? '',
+      at: entry.at ?? null,
+      byName: entry.byName ?? '',
+      auto: Boolean(entry.auto),
+    })),
     createdAt: application.createdAt,
     updatedAt: application.updatedAt,
     job: extras?.job ?? null,

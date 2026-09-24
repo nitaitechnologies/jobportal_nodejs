@@ -20,24 +20,30 @@ import {
   ACTIVE_INTERVIEW_STATUSES,
   canCandidateConfirm,
   canCandidateDecline,
+  canCandidateReschedule,
   canEmployerCancel,
   canEmployerComplete,
+  canEmployerMarkNoShow,
   canEmployerReschedule,
   canTransitionInterviewStatus,
 } from '../utils/interviewStatus';
 import { AppError } from '../utils/AppError';
+import { trackSafely } from './analytics.service';
+import { applicationService } from './application.service';
+import { chatService } from './chat.service';
 import {
   notifySafely,
   resolveCandidateUserId,
   resolveEmployerUserId,
 } from './notification.service';
-import { trackSafely } from './analytics.service';
 import type {
   CandidateInterviewQuery,
   EmployerInterviewQuery,
   InterviewCancelInput,
+  InterviewCompleteInput,
   InterviewCreateInput,
   InterviewDeclineInput,
+  InterviewNoShowInput,
   InterviewRescheduleInput,
   InterviewUpdateInput,
 } from '../validators/interview.validator';
@@ -158,12 +164,16 @@ function validateTypeRequirements(
   type: string,
   location: string,
   meetingLink: string,
+  phoneContact = '',
 ): void {
   if (type === 'online' && !meetingLink.trim()) {
     throw new AppError('meetingLink is required for online interviews', HTTP_STATUS.BAD_REQUEST);
   }
   if (type === 'onsite' && !location.trim()) {
     throw new AppError('location is required for onsite interviews', HTTP_STATUS.BAD_REQUEST);
+  }
+  if (type === 'phone' && !phoneContact.trim()) {
+    throw new AppError('phoneContact is required for phone interviews', HTTP_STATUS.BAD_REQUEST);
   }
 }
 
@@ -217,6 +227,7 @@ export class InterviewService {
       location: input.location,
       meetingLink: input.meetingLink,
       interviewer: input.interviewer,
+      phoneContact: input.phoneContact ?? '',
       notes: input.notes,
       status: 'scheduled',
     });
@@ -260,6 +271,8 @@ export class InterviewService {
         },
       });
     }
+
+    await chatService.linkInterviewDiscussion(interview._id.toString()).catch(() => undefined);
 
     return {
       interview: await mapEmployerDetail(interview),
@@ -346,6 +359,9 @@ export class InterviewService {
     if (input.interviewer !== undefined) {
       interview.interviewer = input.interviewer;
     }
+    if (input.phoneContact !== undefined) {
+      interview.phoneContact = input.phoneContact;
+    }
     if (input.notes !== undefined) {
       interview.notes = input.notes;
     }
@@ -354,6 +370,7 @@ export class InterviewService {
       interview.type,
       interview.location ?? '',
       interview.meetingLink ?? '',
+      interview.phoneContact ?? '',
     );
 
     await interview.save();
@@ -398,6 +415,7 @@ export class InterviewService {
       interview.type,
       interview.location ?? '',
       interview.meetingLink ?? '',
+      interview.phoneContact ?? '',
     );
 
     if (status !== 'rescheduled') {
@@ -406,6 +424,9 @@ export class InterviewService {
       }
       interview.status = 'rescheduled';
     }
+
+    interview.reminder24hSentAt = null;
+    interview.reminder1hSentAt = null;
 
     await interview.save();
 
@@ -499,7 +520,11 @@ export class InterviewService {
     };
   }
 
-  async complete(employer: AuthenticatedEmployer, id: string) {
+  async complete(
+    employer: AuthenticatedEmployer,
+    id: string,
+    input: InterviewCompleteInput = {},
+  ) {
     const interview = await Interview.findOne({
       _id: id,
       companyId: employer.companyId,
@@ -514,6 +539,66 @@ export class InterviewService {
     }
 
     interview.status = 'completed';
+    interview.feedback = {
+      rating: input.rating ?? interview.feedback?.rating ?? null,
+      outcome: input.outcome ?? interview.feedback?.outcome ?? '',
+      notes: input.feedbackNotes?.trim() || interview.feedback?.notes || '',
+      submittedAt: new Date(),
+    };
+    await interview.save();
+
+    const applicationId = interview.applicationId.toString();
+    const outcome = interview.feedback.outcome;
+    if (outcome === 'hire' || outcome === 'reject') {
+      const targetStatus = outcome === 'hire' ? 'hired' : 'rejected';
+      try {
+        await applicationService.updateStatus(employer, applicationId, {
+          status: targetStatus,
+        });
+      } catch {
+        // Transition may already be terminal / invalid — feedback still saved.
+      }
+    }
+
+    if (typeof interview.feedback.rating === 'number') {
+      try {
+        await applicationService.setInternalRating(employer, applicationId, {
+          rating: interview.feedback.rating,
+        });
+      } catch {
+        // Rating sync is best-effort.
+      }
+    }
+
+    return {
+      interview: await mapEmployerDetail(interview),
+    };
+  }
+
+  async markNoShow(
+    employer: AuthenticatedEmployer,
+    id: string,
+    input: InterviewNoShowInput = {},
+  ) {
+    const interview = await Interview.findOne({
+      _id: id,
+      companyId: employer.companyId,
+    });
+    if (!interview) {
+      throw new AppError('Interview not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const status = interview.status as InterviewStatus;
+    if (!canEmployerMarkNoShow(status)) {
+      throw new AppError('Interview cannot be marked as no-show', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    interview.status = 'no-show';
+    if (input.notes?.trim()) {
+      interview.notes = interview.notes
+        ? `${interview.notes}\n\nNo-show note: ${input.notes.trim()}`
+        : `No-show note: ${input.notes.trim()}`;
+    }
     await interview.save();
     return {
       interview: await mapEmployerDetail(interview),
@@ -526,6 +611,12 @@ export class InterviewService {
     };
     if (query.status) {
       filter.status = query.status;
+    }
+    if (query.upcoming === true) {
+      filter.status = query.status
+        ? query.status
+        : { $in: ACTIVE_INTERVIEW_STATUSES };
+      filter.scheduledAt = { $gte: new Date() };
     }
 
     const skip = (query.page - 1) * query.limit;
@@ -611,6 +702,8 @@ export class InterviewService {
       });
     }
 
+    await chatService.linkInterviewDiscussion(interview._id.toString()).catch(() => undefined);
+
     return {
       interview: await mapCandidateDetail(interview),
     };
@@ -665,6 +758,105 @@ export class InterviewService {
           applicationId: interview.applicationId.toString(),
           jobId: interview.jobId.toString(),
           candidateId: interview.candidateId.toString(),
+        },
+      });
+    }
+
+    return {
+      interview: await mapCandidateDetail(interview),
+    };
+  }
+
+  /**
+   * Candidate proposes a new time (129). Mirrors employer reschedule:
+   * updates scheduledAt, sets status to rescheduled, notifies employer.
+   * Clears reminder flags so 24h/1h workers fire again for the new slot.
+   */
+  async candidateReschedule(
+    candidate: AuthenticatedCandidate,
+    id: string,
+    input: InterviewRescheduleInput,
+  ) {
+    const interview = await Interview.findOne({
+      _id: id,
+      candidateId: candidate.candidateId,
+    });
+    if (!interview) {
+      throw new AppError('Interview not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const status = interview.status as InterviewStatus;
+    if (!canCandidateReschedule(status)) {
+      throw new AppError('Interview cannot be rescheduled', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    interview.scheduledAt = input.scheduledAt;
+    if (input.duration !== undefined) {
+      interview.duration = input.duration;
+    }
+    if (input.location !== undefined) {
+      interview.location = input.location;
+    }
+    if (input.meetingLink !== undefined) {
+      interview.meetingLink = input.meetingLink;
+    }
+    if (input.notes !== undefined) {
+      interview.notes = input.notes;
+    }
+
+    validateTypeRequirements(
+      interview.type,
+      interview.location ?? '',
+      interview.meetingLink ?? '',
+      interview.phoneContact ?? '',
+    );
+
+    if (status !== 'rescheduled') {
+      if (!canTransitionInterviewStatus(status, 'rescheduled')) {
+        throw new AppError('Invalid status transition', HTTP_STATUS.BAD_REQUEST);
+      }
+      interview.status = 'rescheduled';
+    }
+
+    // New time → allow reminder worker to send again
+    interview.reminder24hSentAt = null;
+    interview.reminder1hSentAt = null;
+
+    await interview.save();
+
+    await trackSafely({
+      eventType: 'interview_rescheduled',
+      userId: candidate.userId,
+      actorRole: 'candidate',
+      entityType: 'interview',
+      entityId: interview._id,
+      jobId: interview.jobId,
+      companyId: interview.companyId,
+      employerId: interview.employerId,
+      candidateId: interview.candidateId,
+      metadata: {
+        scheduledAt: interview.scheduledAt.toISOString(),
+        requestedBy: 'candidate',
+      },
+    });
+
+    const employerUserId = await resolveEmployerUserId(interview.employerId);
+    if (employerUserId) {
+      const jobTitle = (await Job.findById(interview.jobId).select('title'))?.title;
+      await notifySafely({
+        recipientId: employerUserId,
+        type: 'INTERVIEW_RESCHEDULED',
+        title: 'Interview Reschedule Requested',
+        message: jobTitle
+          ? `A candidate proposed a new time for the "${jobTitle}" interview.`
+          : 'A candidate proposed a new interview time.',
+        data: {
+          interviewId: interview._id.toString(),
+          applicationId: interview.applicationId.toString(),
+          jobId: interview.jobId.toString(),
+          candidateId: interview.candidateId.toString(),
+          scheduledAt: interview.scheduledAt.toISOString(),
+          requestedBy: 'candidate',
         },
       });
     }

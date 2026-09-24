@@ -7,9 +7,11 @@ import {
   candidateInterviewQuerySchema,
   employerInterviewQuerySchema,
   interviewCancelSchema,
+  interviewCompleteSchema,
   interviewCreateSchema,
   interviewDeclineSchema,
   interviewIdParamSchema,
+  interviewNoShowSchema,
   interviewRescheduleSchema,
   interviewUpdateSchema,
 } from '../validators/interview.validator';
@@ -223,6 +225,30 @@ export function validateInterviewDecline(req: Request, _res: Response, next: Nex
     req.body = {};
   }
   const data = validateWithSchema(interviewDeclineSchema, req.body, next);
+  if (!data) {
+    return;
+  }
+  req.body = data;
+  next();
+}
+
+export function validateInterviewComplete(req: Request, _res: Response, next: NextFunction): void {
+  if (req.body === undefined || req.body === null) {
+    req.body = {};
+  }
+  const data = validateWithSchema(interviewCompleteSchema, req.body, next);
+  if (!data) {
+    return;
+  }
+  req.body = data;
+  next();
+}
+
+export function validateInterviewNoShow(req: Request, _res: Response, next: NextFunction): void {
+  if (req.body === undefined || req.body === null) {
+    req.body = {};
+  }
+  const data = validateWithSchema(interviewNoShowSchema, req.body, next);
   if (!data) {
     return;
   }

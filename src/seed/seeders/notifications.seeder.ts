@@ -7,8 +7,17 @@ import { createSeededRng, pick } from '../helpers/rng';
 import type { SeedContext } from '../types';
 
 const CANDIDATE_TYPES: NotificationType[] = [
-  'APPLICATION_SUBMITTED',
+  'APPLICATION_CONFIRMATION',
   'APPLICATION_STATUS_CHANGED',
+  'RECRUITER_VIEWED_PROFILE',
+  'RECRUITER_INVITATION',
+  'JOB_ALERT_INSTANT',
+  'JOB_ALERT_DAILY',
+  'JOB_MATCH',
+  'JOB_NEARBY',
+  'HOT_JOB',
+  'JOB_DEADLINE',
+  'GOVERNMENT_JOB',
   'INTERVIEW_SCHEDULED',
   'INTERVIEW_RESCHEDULED',
   'INTERVIEW_CANCELLED',
@@ -32,8 +41,32 @@ function titleFor(type: NotificationType): string {
   switch (type) {
     case 'APPLICATION_SUBMITTED':
       return 'New application submitted';
+    case 'APPLICATION_CONFIRMATION':
+      return 'Application submitted';
     case 'APPLICATION_STATUS_CHANGED':
       return 'Application status updated';
+    case 'RECRUITER_VIEWED_PROFILE':
+      return 'Recruiter viewed your profile';
+    case 'RECRUITER_INVITATION':
+      return 'Job invitation received';
+    case 'JOB_ALERT_INSTANT':
+      return 'New job alert';
+    case 'JOB_ALERT_DAILY':
+      return 'Daily job alert';
+    case 'JOB_ALERT_WEEKLY':
+      return 'Weekly job alert';
+    case 'JOB_MATCH':
+      return 'Matching job';
+    case 'JOB_NEARBY':
+      return 'Nearby job';
+    case 'JOB_SALARY_MATCH':
+      return 'Salary alert';
+    case 'HOT_JOB':
+      return 'Hot job';
+    case 'JOB_DEADLINE':
+      return 'Job deadline reminder';
+    case 'GOVERNMENT_JOB':
+      return 'Government job alert';
     case 'INTERVIEW_SCHEDULED':
       return 'Interview scheduled';
     case 'INTERVIEW_RESCHEDULED':

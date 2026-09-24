@@ -14,8 +14,11 @@ import { Application } from '../models/Application';
 import { Candidate } from '../models/Candidate';
 import { Company } from '../models/Company';
 import { Employer } from '../models/Employer';
+import { Interview } from '../models/Interview';
 import { Job } from '../models/Job';
 import { Subscription } from '../models/Subscription';
+import { User } from '../models/User';
+import { Payment } from '../models/Payment';
 import type { AuthenticatedEmployer } from '../types/auth.types';
 import { AppError } from '../utils/AppError';
 import {
@@ -310,6 +313,13 @@ export class AnalyticsService {
       to: query.to,
     });
 
+    const periodCreated = {
+      createdAt: { $gte: range.from, $lt: range.to },
+    };
+    const periodApplied = {
+      appliedAt: { $gte: range.from, $lt: range.to },
+    };
+
     const [
       totalCandidates,
       totalEmployers,
@@ -325,6 +335,20 @@ export class AnalyticsService {
       loginsPeriod,
       subscriptionActivityPeriod,
       series,
+      shortlistsLifetime,
+      hiresLifetime,
+      interviewsLifetime,
+      shortlistsPeriod,
+      hiresPeriod,
+      applicationsByStatus,
+      activeUsersPeriod,
+      activeCandidates,
+      activeEmployers,
+      jobsPostedPeriod,
+      employerLoginsPeriod,
+      candidateSources,
+      revenueAgg,
+      applicationsSubmittedPeriod,
     ] = await Promise.all([
       Candidate.countDocuments({}),
       Employer.countDocuments({}),
@@ -340,7 +364,78 @@ export class AnalyticsService {
       countEvents(['candidate_login', 'employer_login', 'admin_login'], range),
       countEvents(['subscription_activated', 'subscription_changed'], range),
       buildSeries(range, query.granularity),
+      Application.countDocuments({ status: 'shortlisted' }),
+      Application.countDocuments({ status: 'hired' }),
+      Interview.countDocuments({}),
+      Application.countDocuments({
+        status: 'shortlisted',
+        shortlistedAt: { $gte: range.from, $lt: range.to },
+      }),
+      Application.countDocuments({
+        status: 'hired',
+        hiredAt: { $gte: range.from, $lt: range.to },
+      }),
+      Application.aggregate<{ _id: string; count: number }>([
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+      User.countDocuments({
+        status: 'active',
+        role: { $in: ['candidate', 'employer'] },
+        lastLoginAt: { $gte: range.from, $lt: range.to },
+      }),
+      User.countDocuments({ status: 'active', role: 'candidate' }),
+      User.countDocuments({ status: 'active', role: 'employer' }),
+      Job.countDocuments({ deletedAt: null, ...periodCreated }),
+      countEvents(['employer_login'], range),
+      Candidate.aggregate<{ _id: string; count: number }>([
+        {
+          $group: {
+            _id: { $ifNull: ['$acquisitionSource', 'direct'] },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { count: -1 } },
+        { $limit: 20 },
+      ]),
+      Payment.aggregate<{
+        _id: string;
+        gross: number;
+        refunded: number;
+        count: number;
+      }>([
+        {
+          $match: {
+            status: { $in: ['succeeded', 'partially_refunded'] },
+            createdAt: { $gte: range.from, $lt: range.to },
+          },
+        },
+        {
+          $group: {
+            _id: '$kind',
+            gross: { $sum: '$totalAmount' },
+            refunded: { $sum: '$refundedAmount' },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      Application.countDocuments(periodApplied),
     ]);
+
+    const revenueByKind = revenueAgg.map((row) => ({
+      kind: row._id || 'unknown',
+      count: row.count,
+      gross: row.gross,
+      refunded: row.refunded,
+      net: Math.max(0, row.gross - row.refunded),
+    }));
+    const periodRevenue = revenueByKind.reduce(
+      (acc, row) => ({
+        gross: acc.gross + row.gross,
+        net: acc.net + row.net,
+        count: acc.count + row.count,
+      }),
+      { gross: 0, net: 0, count: 0 },
+    );
 
     return {
       range: {
@@ -360,6 +455,11 @@ export class AnalyticsService {
         publishedJobs,
         totalApplications,
         activeSubscriptions,
+        shortlists: shortlistsLifetime,
+        hires: hiresLifetime,
+        interviews: interviewsLifetime,
+        activeCandidates,
+        activeEmployers,
       },
       metrics: {
         jobViews: jobViewsPeriod,
@@ -368,6 +468,27 @@ export class AnalyticsService {
         savedJobs: savedJobsPeriod,
         logins: loginsPeriod,
         subscriptionActivity: subscriptionActivityPeriod,
+        shortlists: shortlistsPeriod,
+        hires: hiresPeriod,
+        activeUsers: activeUsersPeriod,
+        jobsPosted: jobsPostedPeriod,
+        employerLogins: employerLoginsPeriod,
+        applicationsSubmitted: applicationsSubmittedPeriod,
+      },
+      applicationsByStatus: applicationsByStatus.map((row) => ({
+        status: row._id,
+        count: row.count,
+      })),
+      candidateSources: candidateSources.map((row) => ({
+        source: row._id || 'direct',
+        count: row.count,
+      })),
+      revenue: {
+        currency: 'INR',
+        periodGross: periodRevenue.gross,
+        periodNet: periodRevenue.net,
+        paymentCount: periodRevenue.count,
+        byKind: revenueByKind,
       },
       series,
     };

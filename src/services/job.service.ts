@@ -18,18 +18,26 @@ import {
 } from '../utils/jobMapper';
 import { createUniqueSlug } from '../utils/slug';
 import {
+  buildEducationFilter,
   buildExperienceOverlapFilter,
   buildKeywordFilter,
+  buildPostedWithinFilter,
   buildPublicVisibilityFilter,
   buildSalaryOverlapFilter,
+  buildSkillsFilter,
+  buildWorkingDaysFilter,
   mergeFilters,
+  resolveFresherMode,
   resolvePublicSort,
   sanitizeTextSearch,
 } from '../utils/jobSearchQuery';
-import { getEmployerEntitlements, markExpiredJobsForCompany, FREE_ENTITLEMENTS } from './entitlement.service';
+import { getEmployerEntitlements, markExpiredJobsForCompany, FREE_ENTITLEMENTS, canFeatureJob } from './entitlement.service';
 import { trackSafely } from './analytics.service';
+import { jobAlertService } from './jobAlert.service';
 import { settingsService } from './settings.service';
-import { resolveJobExpiresAt } from '../utils/jobListingExpiry';
+import { walletService } from './wallet.service';
+import { resolveCreditCosts } from './creditCatalog.service';
+import { resolveJobExpiresAt, addDays } from '../utils/jobListingExpiry';
 import { haversineKm } from '../utils/geo';
 import { placesService, type ResolvedPlace } from './places.service';
 import type {
@@ -71,19 +79,43 @@ type JobDocument = mongoose.Document & {
   salaryPeriod?: string;
   openings?: number;
   education?: string;
+  screeningQuestions?: Array<{
+    id: string;
+    text: string;
+    required?: boolean;
+    type?: string;
+  }>;
+  screeningAutoFilter?: {
+    enabled?: boolean;
+    minMatchScore?: number;
+  };
+  shift?: string;
+  workingDays?: string[];
+  workingHours?: string;
   genderPreference?: string;
   benefits: string[];
+  incentives?: boolean;
+  interviewProcess?: string;
   applicationDeadline?: Date;
   applicationMethod?: string;
   status: JobStatus;
   featured?: boolean;
   urgent?: boolean;
+  featuredAt?: Date | null;
+  boostBaseline?: {
+    views?: number;
+    applicationsCount?: number;
+    capturedAt?: Date | null;
+  } | null;
+  boostNotifySentAt?: Date | null;
+  boostNotifyCount?: number;
   views?: number;
   applicationsCount?: number;
   publishedAt?: Date;
   expiresAt?: Date;
   renewalCount?: number;
   lastRenewedAt?: Date;
+  expiryReminderSentAt?: Date;
   deletedAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;
@@ -556,11 +588,38 @@ function applyEditableFields(
   if ('education' in input && input.education !== undefined) {
     job.education = input.education;
   }
+  if ('screeningQuestions' in input && input.screeningQuestions !== undefined) {
+    job.screeningQuestions = input.screeningQuestions;
+  }
+  if ('screeningAutoFilter' in input && input.screeningAutoFilter !== undefined) {
+    job.screeningAutoFilter = {
+      enabled: input.screeningAutoFilter.enabled ?? false,
+      minMatchScore: input.screeningAutoFilter.minMatchScore ?? 40,
+    };
+  }
+  if ('shift' in input && input.shift !== undefined) {
+    job.shift = input.shift ?? undefined;
+  }
+  if ('workingDays' in input && input.workingDays !== undefined) {
+    job.workingDays = input.workingDays;
+  }
+  if ('workingHours' in input && input.workingHours !== undefined) {
+    job.workingHours = input.workingHours ?? '';
+  }
   if ('genderPreference' in input && input.genderPreference !== undefined) {
     job.genderPreference = input.genderPreference;
   }
   if ('benefits' in input && input.benefits !== undefined) {
     job.benefits = input.benefits;
+  }
+  if ('incentives' in input && input.incentives !== undefined) {
+    job.incentives = input.incentives;
+  }
+  if ('interviewProcess' in input && input.interviewProcess !== undefined) {
+    job.interviewProcess = input.interviewProcess ?? '';
+  }
+  if ('urgent' in input && input.urgent !== undefined) {
+    job.urgent = input.urgent;
   }
   if ('applicationMethod' in input && input.applicationMethod !== undefined) {
     job.applicationMethod = input.applicationMethod;
@@ -655,13 +714,23 @@ export class JobService {
       salaryPeriod: input.salary?.period ?? 'monthly',
       openings: input.openings,
       education: input.education,
+      screeningQuestions: input.screeningQuestions ?? [],
+      screeningAutoFilter: {
+        enabled: input.screeningAutoFilter?.enabled ?? false,
+        minMatchScore: input.screeningAutoFilter?.minMatchScore ?? 40,
+      },
+      shift: input.shift,
+      workingDays: input.workingDays ?? [],
+      workingHours: input.workingHours ?? '',
       genderPreference: input.genderPreference,
       benefits: input.benefits,
+      incentives: input.incentives ?? false,
+      interviewProcess: input.interviewProcess ?? '',
       applicationDeadline: input.deadline,
       applicationMethod: input.applicationMethod,
       status: 'draft',
       featured: false,
-      urgent: false,
+      urgent: input.urgent ?? false,
       views: 0,
       applicationsCount: 0,
     })) as JobDocument;
@@ -891,6 +960,11 @@ export class JobService {
       locationId: job.location?.locationId,
     });
 
+    void jobAlertService.onJobPublished(job._id).catch((error: unknown) => {
+      const reason = error instanceof Error ? error.message : 'unknown error';
+      console.error(`[job-alerts] publish hook failed: ${reason}`);
+    });
+
     return this.getEmployerById(employer, id);
   }
 
@@ -1063,16 +1137,357 @@ export class JobService {
     return this.getEmployerById(employer, id);
   }
 
+  /**
+   * Extend a live listing window (and deadline if present) without consuming a renew credit.
+   */
+  async extend(employer: AuthenticatedEmployer, id: string, daysRaw?: number) {
+    const job = await findOwnedJob(id, employer);
+    if (job.status !== 'published' && job.status !== 'paused') {
+      throw new AppError(
+        'Only published or paused jobs can be extended',
+        HTTP_STATUS.CONFLICT,
+      );
+    }
+
+    const entitlements = await getEmployerEntitlements(employer);
+    const defaultDays =
+      entitlements.limits.jobListingLifetimeDays > 0
+        ? Math.min(entitlements.limits.jobListingLifetimeDays, 30)
+        : 7;
+    const days =
+      typeof daysRaw === 'number' && Number.isFinite(daysRaw)
+        ? Math.min(90, Math.max(1, Math.floor(daysRaw)))
+        : defaultDays;
+
+    const now = new Date();
+    const baseExpiry =
+      job.expiresAt && job.expiresAt.getTime() > now.getTime() ? job.expiresAt : now;
+    job.expiresAt = addDays(baseExpiry, days);
+
+    if (job.applicationDeadline) {
+      const baseDeadline =
+        job.applicationDeadline.getTime() > now.getTime()
+          ? job.applicationDeadline
+          : now;
+      job.applicationDeadline = addDays(baseDeadline, days);
+    }
+
+    job.expiryReminderSentAt = undefined;
+    await job.save();
+
+    return this.getEmployerById(employer, id);
+  }
+
+  /** Mark a live job expired early (stops public visibility without soft-delete). */
+  async expire(employer: AuthenticatedEmployer, id: string) {
+    const job = await findOwnedJob(id, employer);
+    if (job.status !== 'published' && job.status !== 'paused') {
+      throw new AppError(
+        'Only published or paused jobs can be expired',
+        HTTP_STATUS.CONFLICT,
+      );
+    }
+    job.status = 'expired';
+    job.expiresAt = new Date();
+    await job.save();
+    return this.getEmployerById(employer, id);
+  }
+
+  /**
+   * Republish: resume paused jobs, or renew expired jobs (one post credit).
+   */
+  async republish(employer: AuthenticatedEmployer, id: string) {
+    const job = await findOwnedJob(id, employer);
+    if (job.status === 'paused') {
+      return this.resume(employer, id);
+    }
+    if (job.status === 'expired') {
+      return this.renew(employer, id);
+    }
+    throw new AppError(
+      'Only paused or expired jobs can be republished',
+      HTTP_STATUS.CONFLICT,
+      [{ path: 'status', message: `Current status is "${job.status}"` }],
+    );
+  }
+
+  async setFeatured(employer: AuthenticatedEmployer, id: string, featured: boolean) {
+    const job = await findOwnedJob(id, employer);
+    if (job.status !== 'published' && job.status !== 'paused') {
+      throw new AppError(
+        'Only published or paused jobs can be featured',
+        HTTP_STATUS.CONFLICT,
+      );
+    }
+
+    if (featured) {
+      const entitlements = await getEmployerEntitlements(employer);
+      const featuredCount = await Job.countDocuments({
+        companyId: new mongoose.Types.ObjectId(employer.companyId),
+        deletedAt: null,
+        featured: true,
+        status: { $in: ['published', 'paused'] },
+        _id: { $ne: job._id },
+      });
+      const limit = entitlements.limits.featuredJobLimit ?? 0;
+      const planOk = canFeatureJob(entitlements) && (limit <= 0 || featuredCount < limit);
+
+      if (!planOk && !job.featured) {
+        // Pay with wallet credits when plan featured slots are unavailable (sheet 355).
+        const costs = await resolveCreditCosts();
+        await walletService.debit({
+          companyId: employer.companyId,
+          credits: costs.featuredJob,
+          type: 'spend_featured',
+          description: `Featured job ${id}`,
+          metadata: { jobId: id },
+        });
+      }
+    }
+
+    const turningOn = featured && !job.featured;
+    job.featured = featured;
+    if (turningOn) {
+      job.featuredAt = new Date();
+      job.set('boostBaseline', {
+        views: job.views ?? 0,
+        applicationsCount: job.applicationsCount ?? 0,
+        capturedAt: new Date(),
+      });
+    } else if (!featured) {
+      job.featuredAt = null;
+    }
+    await job.save();
+
+    if (turningOn && job.status === 'published') {
+      await trackSafely({
+        eventType: 'job_featured',
+        userId: employer.userId,
+        actorRole: 'employer',
+        entityType: 'job',
+        entityId: job._id,
+        jobId: job._id,
+        companyId: job.companyId,
+        employerId: job.employerId,
+        metadata: { featured: true, urgent: Boolean(job.urgent) },
+      });
+      void jobAlertService.onJobHotFlagged(job._id).catch(() => undefined);
+    }
+
+    return this.getEmployerById(employer, id);
+  }
+
+  async setUrgent(employer: AuthenticatedEmployer, id: string, urgent: boolean) {
+    const job = await findOwnedJob(id, employer);
+    if (job.status !== 'published' && job.status !== 'paused' && job.status !== 'draft') {
+      throw new AppError(
+        'Urgent flag can only be set on draft, published, or paused jobs',
+        HTTP_STATUS.CONFLICT,
+      );
+    }
+    const turningOn = urgent && !job.urgent;
+    job.urgent = urgent;
+    await job.save();
+
+    if (turningOn && job.status === 'published') {
+      void jobAlertService.onJobHotFlagged(job._id).catch(() => undefined);
+    }
+
+    return this.getEmployerById(employer, id);
+  }
+
+  /**
+   * Boost & Featured (318–319): notify matching candidates about a featured/urgent job.
+   */
+  async notifyBoostMatches(
+    employer: AuthenticatedEmployer,
+    id: string,
+    opts: { minScore?: number; limit?: number } = {},
+  ) {
+    const job = await findOwnedJob(id, employer);
+    if (job.status !== 'published') {
+      throw new AppError('Only published jobs can notify matching candidates', HTTP_STATUS.CONFLICT);
+    }
+    if (!job.featured && !job.urgent) {
+      throw new AppError(
+        'Mark the job as featured or urgent before sending a boost notify',
+        HTTP_STATUS.BAD_REQUEST,
+      );
+    }
+
+    const costs = await resolveCreditCosts();
+    await walletService.debit({
+      companyId: employer.companyId,
+      credits: costs.boostNotify,
+      type: 'spend_boost',
+      description: `Boost notify for job ${id}`,
+      metadata: { jobId: id },
+    });
+
+    const result = await jobAlertService.notifyMatchingCandidatesForBoost(job._id, {
+      minScore: opts.minScore ?? 60,
+      limit: opts.limit ?? 40,
+    });
+
+    job.boostNotifySentAt = new Date();
+    job.boostNotifyCount = (job.boostNotifyCount ?? 0) + result.sent;
+    await job.save();
+
+    return {
+      jobId: job._id.toString(),
+      sent: result.sent,
+      scanned: result.scanned,
+      boostNotifySentAt: job.boostNotifySentAt.toISOString(),
+      boostNotifyCount: job.boostNotifyCount,
+    };
+  }
+
+  /** Boost performance since featuredAt (320). */
+  async getBoostStats(employer: AuthenticatedEmployer, id: string) {
+    const job = await findOwnedJob(id, employer);
+    const baseline = job.boostBaseline as
+      | { views?: number; applicationsCount?: number; capturedAt?: Date | null }
+      | undefined;
+    const baseViews = baseline?.views ?? 0;
+    const baseApps = baseline?.applicationsCount ?? 0;
+    const views = job.views ?? 0;
+    const applications = job.applicationsCount ?? 0;
+
+    return {
+      jobId: job._id.toString(),
+      featured: Boolean(job.featured),
+      urgent: Boolean(job.urgent),
+      featuredAt: job.featuredAt ?? null,
+      boostNotifySentAt: job.boostNotifySentAt ?? null,
+      boostNotifyCount: job.boostNotifyCount ?? 0,
+      baseline: {
+        views: baseViews,
+        applicationsCount: baseApps,
+        capturedAt: baseline?.capturedAt ?? null,
+      },
+      current: {
+        views,
+        applicationsCount: applications,
+      },
+      delta: {
+        views: Math.max(0, views - baseViews),
+        applicationsCount: Math.max(0, applications - baseApps),
+      },
+    };
+  }
+
+  /** Clone an owned job into a new draft (does not copy metrics / lifecycle). */
+  async duplicate(employer: AuthenticatedEmployer, id: string) {
+    await assertCompanyCanPost(employer.companyId);
+    const source = await findOwnedJob(id, employer);
+
+    const entitlements = await getEmployerEntitlements(employer);
+    if (entitlements.usage.jobsPostedInPeriod >= entitlements.limits.jobPostLimit) {
+      throw new AppError(
+        'Job post limit reached for your current subscription',
+        HTTP_STATUS.FORBIDDEN,
+        [
+          {
+            path: 'subscription',
+            message: `jobPostLimit is ${entitlements.limits.jobPostLimit}`,
+          },
+        ],
+      );
+    }
+
+    const title = `${source.title} — Copy`.slice(0, 200);
+    const slug = await uniqueJobSlug(title);
+    const job = (await Job.create({
+      companyId: source.companyId,
+      employerId: new mongoose.Types.ObjectId(employer.employerId),
+      title,
+      slug,
+      description: source.description,
+      videoJd: '',
+      responsibilities: source.responsibilities ?? [],
+      requirements: source.requirements ?? [],
+      skills: source.skills ?? [],
+      categoryId: source.categoryId,
+      location: source.location ?? {},
+      workMode: source.workMode,
+      employmentType: source.employmentType,
+      experienceMin: source.experienceMin ?? 0,
+      experienceMax: source.experienceMax,
+      salaryMin: source.salaryMin,
+      salaryMax: source.salaryMax,
+      salaryPeriod: source.salaryPeriod ?? 'monthly',
+      openings: source.openings ?? 1,
+      education: source.education ?? '',
+      shift: source.shift,
+      workingDays: source.workingDays ?? [],
+      workingHours: source.workingHours ?? '',
+      genderPreference: source.genderPreference ?? 'any',
+      benefits: source.benefits ?? [],
+      incentives: Boolean(source.incentives),
+      interviewProcess: source.interviewProcess ?? '',
+      applicationDeadline: source.applicationDeadline,
+      applicationMethod: source.applicationMethod ?? 'platform',
+      status: 'draft',
+      featured: false,
+      urgent: Boolean(source.urgent),
+      views: 0,
+      applicationsCount: 0,
+    } as never)) as JobDocument;
+
+    await trackSafely({
+      eventType: 'job_created',
+      userId: employer.userId,
+      actorRole: 'employer',
+      entityType: 'job',
+      entityId: job._id,
+      jobId: job._id,
+      companyId: job.companyId,
+      employerId: job.employerId,
+      categoryId: job.categoryId,
+      locationId: job.location?.locationId,
+      metadata: { source: 'duplicate', fromJobId: source._id.toString() },
+    });
+
+    return this.getEmployerById(employer, job._id.toString());
+  }
+
   async listPublic(query: PublicJobQuery) {
     const limit = await settingsService.clampPublicJobPageSize(query.limit);
     const page = query.page;
-    const publicCompanies = await Company.find({
+    const now = new Date();
+
+    const companyFilter: Record<string, unknown> = {
       status: 'active',
       verificationStatus: { $ne: 'rejected' },
-    }).select('_id');
+    };
+    if (query.verified === true) {
+      companyFilter.verificationStatus = 'verified';
+    }
+    if (query.industry?.trim()) {
+      companyFilter.industry = {
+        $regex: query.industry.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+        $options: 'i',
+      };
+    }
+    if (query.companyId) {
+      companyFilter._id = new mongoose.Types.ObjectId(query.companyId);
+    } else if (query.companySlug?.trim()) {
+      const slugOrName = query.companySlug.trim().toLowerCase();
+      companyFilter.$or = [
+        { slug: slugOrName },
+        { name: { $regex: `^${slugOrName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
+      ];
+    }
 
+    const publicCompanies = await Company.find(companyFilter).select('_id');
     const companyIds = publicCompanies.map((company) => company._id);
-    const now = new Date();
+    if (companyIds.length === 0) {
+      return {
+        jobs: [],
+        pagination: { page, limit, total: 0, totalPages: 1 },
+        meta: { sort: query.sort, q: query.q ?? null },
+      };
+    }
 
     const resolvedCategoryId = await resolveActiveCategoryId(query.categoryId, query.category);
     const resolvedLocationIds = await resolveActiveLocationIds(query.locationId, query.location);
@@ -1084,6 +1499,24 @@ export class JobService {
         : null;
     const hasKeyword = Boolean(keywordFilter);
 
+    const fresherResolved = resolveFresherMode(query.fresherMode, {
+      experienceMin: query.experienceMin,
+      experienceMax: query.experienceMax,
+      employmentType: query.employmentType,
+      education: query.education,
+    });
+    const experienceMin =
+      fresherResolved.experienceMin !== undefined
+        ? fresherResolved.experienceMin
+        : query.experienceMin;
+    const experienceMax =
+      fresherResolved.experienceMax !== undefined
+        ? fresherResolved.experienceMax
+        : query.experienceMax;
+    const employmentType =
+      fresherResolved.employmentType ?? query.employmentType;
+    const educationLevels = fresherResolved.education ?? query.education;
+
     const filter = mergeFilters(
       buildPublicVisibilityFilter(companyIds, now),
       keywordFilter,
@@ -1092,11 +1525,21 @@ export class JobService {
         ? { 'location.locationId': { $in: resolvedLocationIds } }
         : null,
       query.workMode ? { workMode: query.workMode } : null,
-      query.employmentType ? { employmentType: query.employmentType } : null,
-      buildExperienceOverlapFilter(query.experienceMin, query.experienceMax),
+      employmentType ? { employmentType } : null,
+      buildExperienceOverlapFilter(experienceMin, experienceMax),
       buildSalaryOverlapFilter(query.salaryMin, query.salaryMax),
       query.featured === undefined ? null : { featured: query.featured },
       query.urgent === undefined ? null : { urgent: query.urgent },
+      buildEducationFilter(educationLevels),
+      buildSkillsFilter(query.skills),
+      buildPostedWithinFilter(query.postedWithinDays, now),
+      query.shift ? { shift: query.shift } : null,
+      buildWorkingDaysFilter(query.workingDays),
+      query.easyApply === true ? { applicationMethod: 'platform' } : null,
+      query.easyApply === false
+        ? { applicationMethod: { $ne: 'platform' } }
+        : null,
+      fresherResolved.extraFilter ?? null,
     );
 
     const sort = resolvePublicSort(query.sort, hasKeyword);
@@ -1105,34 +1548,51 @@ export class JobService {
       query.lat !== undefined && query.lng !== undefined
         ? { latitude: query.lat, longitude: query.lng }
         : null;
+    const useGeoPool =
+      Boolean(origin) && (query.sort === 'nearest' || query.radiusKm !== undefined);
 
     let items;
-    if (query.sort === 'nearest' && origin) {
-      const pool = await Job.find(filter).limit(300);
-      items = pool
-        .map((item) => ({
-          item,
-          distance:
-            typeof item.location?.latitude === 'number' &&
-            typeof item.location.longitude === 'number'
-              ? haversineKm(origin, {
-                  latitude: item.location.latitude,
-                  longitude: item.location.longitude,
-                })
-              : Number.POSITIVE_INFINITY,
-        }))
-        .sort((left, right) => left.distance - right.distance)
-        .slice(skip, skip + limit)
-        .map((row) => row.item);
+    let total: number;
+
+    if (useGeoPool && origin) {
+      const pool = await Job.find(filter).limit(500);
+      let ranked = pool.map((item) => {
+        const distance =
+          typeof item.location?.latitude === 'number' &&
+          typeof item.location.longitude === 'number'
+            ? haversineKm(origin, {
+                latitude: item.location.latitude,
+                longitude: item.location.longitude,
+              })
+            : Number.POSITIVE_INFINITY;
+        return { item, distance };
+      });
+
+      if (query.radiusKm !== undefined) {
+        ranked = ranked.filter((row) => row.distance <= query.radiusKm!);
+      }
+
+      if (query.sort === 'nearest') {
+        ranked.sort((left, right) => left.distance - right.distance);
+      } else {
+        // Keep DB sort order approximately by publishedAt when radius-only.
+        ranked.sort((left, right) => {
+          const a = left.item.publishedAt?.getTime() ?? 0;
+          const b = right.item.publishedAt?.getTime() ?? 0;
+          return b - a;
+        });
+      }
+
+      total = ranked.length;
+      items = ranked.slice(skip, skip + limit).map((row) => row.item);
     } else {
       let findQuery = Job.find(filter).sort(sort).skip(skip).limit(limit);
       if (hasKeyword && query.sort === 'relevance') {
         findQuery = findQuery.select({ score: { $meta: 'textScore' } });
       }
       items = await findQuery;
+      total = await Job.countDocuments(filter);
     }
-
-    const total = await Job.countDocuments(filter);
 
     const categoryMap = await loadCategoryMap(
       items
@@ -1178,7 +1638,10 @@ export class JobService {
     };
   }
 
-  async getPublicBySlug(slug: string) {
+  async getPublicBySlug(
+    slug: string,
+    geo?: { lat?: number; lng?: number },
+  ) {
     const job = (await Job.findOne({
       slug: slug.trim().toLowerCase(),
       status: 'published',
@@ -1218,6 +1681,24 @@ export class JobService {
       ? await Category.findById(job.categoryId).select('name slug')
       : null;
 
+    const contactPhone = company.contactPhone?.trim() || '';
+    const origin =
+      typeof geo?.lat === 'number' &&
+      Number.isFinite(geo.lat) &&
+      typeof geo?.lng === 'number' &&
+      Number.isFinite(geo.lng)
+        ? { latitude: geo.lat, longitude: geo.lng }
+        : null;
+    const distanceKm =
+      origin &&
+      typeof job.location?.latitude === 'number' &&
+      typeof job.location.longitude === 'number'
+        ? haversineKm(origin, {
+            latitude: job.location.latitude,
+            longitude: job.location.longitude,
+          })
+        : null;
+
     return {
       job: mapPublicJob(job, {
         category: category
@@ -1232,7 +1713,9 @@ export class JobService {
           companySize: company.companySize ?? null,
           headquarters: company.headquarters ?? '',
           verificationStatus: company.verificationStatus,
+          contactPhone: contactPhone || undefined,
         },
+        distanceKm,
       }),
     };
   }

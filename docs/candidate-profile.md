@@ -27,6 +27,12 @@ Authenticated candidate self-service profile. B15 extends B7 — it does **not**
 | `DELETE` | `/api/v1/candidate/profile/certifications/:certificationId` | Remove |
 | `GET` | `/api/v1/candidate/profile/resume` | Resume metadata (`resume` URL string) |
 | `DELETE` | `/api/v1/candidate/profile/resume` | Clear resume metadata |
+| `POST` | `/api/v1/candidate/profile/resume/ai/build` | AI resume builder (ChatGPT) — see [ai-resume.md](./ai-resume.md) |
+| `POST` | `/api/v1/candidate/profile/resume/ai/tailor` | AI job-specific resume — see [ai-resume.md](./ai-resume.md) |
+
+AI matching + career coach: see [ai-matching.md](./ai-matching.md) (`/api/v1/candidate/ai/*`).
+
+| `POST` | `/api/v1/candidate/profile/resume/ai/tailor` | AI job-specific resume tailoring |
 
 Auth: JWT + role `candidate`. Ownership always from JWT → Candidate.
 

@@ -1,8 +1,15 @@
-# Notifications (B17)
+# Notifications (B17 + Platform 472–479)
 
 In-app notification storage, retrieval, and read-state management.
 
-Email, SMS, push, and WebSockets are **not** included.
+**Channels (472–473):** every `createNotification` / `notifySafely` also fans out to:
+
+1. **Push** — `push.service` + registered `DeviceToken` (`POST /notifications/device-token`). Needs `FCM_SERVER_KEY` for live FCM; otherwise log mode.
+2. **Email** — `email.service` (nodemailer). Needs `SMTP_*`; otherwise JSON log transport.
+
+OTP (474) uses the same email path for email OTPs and logs SMS until `SMS_PROVIDER_API_KEY` is set.
+
+See `docs/platform-notifications-qa.md` for QA scripts and launch checklists.
 
 ## Model (B3)
 
@@ -20,13 +27,26 @@ Email, SMS, push, and WebSockets are **not** included.
 
 ```text
 APPLICATION_SUBMITTED
+APPLICATION_CONFIRMATION
 APPLICATION_STATUS_CHANGED
+RECRUITER_VIEWED_PROFILE
+RECRUITER_INVITATION
 INTERVIEW_SCHEDULED
 INTERVIEW_RESCHEDULED
 INTERVIEW_CANCELLED
 INTERVIEW_CONFIRMED
 INTERVIEW_DECLINED
 JOB_STATUS_CHANGED
+REPORT_STATUS_CHANGED
+JOB_ALERT_INSTANT
+JOB_ALERT_DAILY
+JOB_ALERT_WEEKLY
+JOB_MATCH
+JOB_NEARBY
+JOB_SALARY_MATCH
+HOT_JOB
+JOB_DEADLINE
+GOVERNMENT_JOB
 SYSTEM
 ```
 
@@ -53,7 +73,14 @@ There is **no** public create endpoint. Only internal services call `createNotif
 | Event | Recipient | Type |
 |-------|-----------|------|
 | Candidate applies | Employer | `APPLICATION_SUBMITTED` |
+| Candidate applies | Candidate | `APPLICATION_CONFIRMATION` |
 | Employer changes application status | Candidate | `APPLICATION_STATUS_CHANGED` |
+| Employer opens application (auto-view) or candidate profile | Candidate | `RECRUITER_VIEWED_PROFILE` |
+| Employer invites candidate to a job | Candidate | `RECRUITER_INVITATION` |
+| Job matches saved search (instant) | Candidate | `JOB_ALERT_INSTANT` |
+| Daily / weekly digests | Candidate | `JOB_ALERT_DAILY` / `JOB_ALERT_WEEKLY` |
+| Profile match / nearby / salary / hot / gov | Candidate | `JOB_MATCH` / `JOB_NEARBY` / `JOB_SALARY_MATCH` / `HOT_JOB` / `GOVERNMENT_JOB` |
+| Saved-job deadline approaching | Candidate | `JOB_DEADLINE` |
 | Interview scheduled | Candidate | `INTERVIEW_SCHEDULED` |
 | Interview rescheduled | Candidate | `INTERVIEW_RESCHEDULED` |
 | Interview cancelled (employer) | Candidate | `INTERVIEW_CANCELLED` |

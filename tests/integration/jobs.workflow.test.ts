@@ -138,4 +138,54 @@ describe('Jobs, applications, interviews workflow', () => {
       .set(otherCandidate.header);
     await expectErrorShape(stolenCand, 404);
   });
+
+  it('supports employer job management lifecycle actions', async () => {
+    const { employer, jobId } = await seedMarketplace();
+
+    const pause = await api()
+      .patch(`/api/v1/employer/jobs/${jobId}/pause`)
+      .set(employer.header);
+    expect(pause.status).toBe(200);
+    expect(pause.body.data.job?.status ?? pause.body.data.status).toBe('paused');
+
+    const extend = await api()
+      .patch(`/api/v1/employer/jobs/${jobId}/extend`)
+      .set(employer.header)
+      .send({ days: 7 });
+    expect(extend.status).toBe(200);
+
+    const urgent = await api()
+      .patch(`/api/v1/employer/jobs/${jobId}/urgent`)
+      .set(employer.header)
+      .send({ urgent: true });
+    expect(urgent.status).toBe(200);
+    expect(urgent.body.data.job?.urgent ?? urgent.body.data.urgent).toBe(true);
+
+    const republish = await api()
+      .patch(`/api/v1/employer/jobs/${jobId}/republish`)
+      .set(employer.header);
+    expect(republish.status).toBe(200);
+    expect(republish.body.data.job?.status ?? republish.body.data.status).toBe(
+      'published',
+    );
+
+    const expire = await api()
+      .patch(`/api/v1/employer/jobs/${jobId}/expire`)
+      .set(employer.header);
+    expect(expire.status).toBe(200);
+    expect(expire.body.data.job?.status ?? expire.body.data.status).toBe('expired');
+
+    const renew = await api()
+      .patch(`/api/v1/employer/jobs/${jobId}/renew`)
+      .set(employer.header);
+    expect(renew.status).toBe(200);
+    expect(renew.body.data.job?.status ?? renew.body.data.status).toBe('published');
+
+    const dup = await api()
+      .post(`/api/v1/employer/jobs/${jobId}/duplicate`)
+      .set(employer.header);
+    expect(dup.status).toBe(201);
+    expect(dup.body.data.job?.status ?? dup.body.data.status).toBe('draft');
+    expect(String(dup.body.data.job?.title ?? '')).toMatch(/Copy/);
+  });
 });

@@ -19,6 +19,7 @@ import { Report } from '../models/Report';
 import { SavedJob } from '../models/SavedJob';
 import { Subscription } from '../models/Subscription';
 import { SubscriptionPlan } from '../models/SubscriptionPlan';
+import { Coupon } from '../models/Coupon';
 import { User } from '../models/User';
 import { DEMO_EMAIL_DOMAIN, SEED_META_FLAG, assertSeedEnvironmentAllowed } from './config';
 import { allArticleSlugs } from './data/articles';
@@ -123,6 +124,9 @@ export async function resetDemoData(): Promise<ResetCounts> {
   ).deletedCount;
   counts.subscriptionPlans = (
     await SubscriptionPlan.deleteMany({ slug: { $in: allPlanSlugs() } })
+  ).deletedCount;
+  counts.coupons = (
+    await Coupon.deleteMany({ code: { $in: ['WELCOME20', 'FLAT500'] } })
   ).deletedCount;
   counts.categories = (
     await Category.deleteMany({ slug: { $in: allCategorySlugs() } })

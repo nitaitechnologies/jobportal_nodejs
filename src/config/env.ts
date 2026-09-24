@@ -152,6 +152,81 @@ export const env = {
    * so job and candidate still share one coordinate source.
    */
   googleMapsApiKey: (process.env.GOOGLE_MAPS_API_KEY ?? '').trim(),
+  /**
+   * Candidate mobile OTP. When set (e.g. 123456), SMS is skipped and this
+   * fixed code is always issued. Clear / unset when a real SMS provider is wired.
+   */
+  candidateOtpDummy: (process.env.CANDIDATE_OTP_DUMMY ?? '123456').trim(),
+  /** OTP validity window in seconds (default 5 minutes). */
+  candidateOtpTtlSeconds: parsePositiveInt('CANDIDATE_OTP_TTL_SECONDS', '300'),
+  /**
+   * Max concurrent auth sessions per employer user (sheet 164).
+   * Oldest sessions are revoked when the limit is exceeded.
+   */
+  employerMaxSessions: parsePositiveInt('EMPLOYER_MAX_SESSIONS', '5'),
+  /** Team invite validity in days (sheet 160). */
+  employerTeamInviteTtlDays: parsePositiveInt('EMPLOYER_TEAM_INVITE_TTL_DAYS', '7'),
+  /**
+   * OpenAI (ChatGPT) for AI resume builder / job-specific tailoring.
+   * When empty, AI resume routes return 404 and /me features.aiResumeEnabled=false.
+   */
+  openaiApiKey: (process.env.OPENAI_API_KEY ?? '').trim(),
+  openaiModel: (process.env.OPENAI_MODEL ?? 'gpt-4o-mini').trim() || 'gpt-4o-mini',
+  /**
+   * Explicit AI resume feature toggle. Default on when OPENAI_API_KEY is set.
+   * Set ENABLE_AI_RESUME=false to hide endpoints even if a key exists.
+   */
+  enableAiResume:
+    process.env.ENABLE_AI_RESUME !== undefined
+      ? process.env.ENABLE_AI_RESUME === 'true' || process.env.ENABLE_AI_RESUME === '1'
+      : Boolean((process.env.OPENAI_API_KEY ?? '').trim()),
+  /**
+   * AI job matching + explain-why (102, 107). Default on when OPENAI_API_KEY is set.
+   */
+  enableAiMatching:
+    process.env.ENABLE_AI_MATCHING !== undefined
+      ? process.env.ENABLE_AI_MATCHING === 'true' || process.env.ENABLE_AI_MATCHING === '1'
+      : Boolean((process.env.OPENAI_API_KEY ?? '').trim()),
+  /**
+   * AI career coach (109–112). Default on when OPENAI_API_KEY is set.
+   */
+  enableAiCareerCoach:
+    process.env.ENABLE_AI_CAREER_COACH !== undefined
+      ? process.env.ENABLE_AI_CAREER_COACH === 'true' ||
+        process.env.ENABLE_AI_CAREER_COACH === '1'
+      : Boolean((process.env.OPENAI_API_KEY ?? '').trim()),
+  /** AI resume rate limit window (ms). Default 15 minutes. */
+  aiResumeRateLimitWindowMs: parsePositiveInt(
+    'AI_RESUME_RATE_LIMIT_WINDOW_MS',
+    String(15 * 60 * 1000),
+  ),
+  /** Max AI resume generations per window per IP. Default 20. */
+  aiResumeRateLimitMax: parsePositiveInt('AI_RESUME_RATE_LIMIT_MAX', '20'),
+  /** Shared rate limit for matching + career coach AI calls. */
+  aiCoachRateLimitWindowMs: parsePositiveInt(
+    'AI_COACH_RATE_LIMIT_WINDOW_MS',
+    String(15 * 60 * 1000),
+  ),
+  aiCoachRateLimitMax: parsePositiveInt('AI_COACH_RATE_LIMIT_MAX', '30'),
+  /**
+   * Employer AI Recruitment Assistant + AI Interview (293–303).
+   * Default on when OPENAI_API_KEY is set.
+   */
+  enableAiRecruitment:
+    process.env.ENABLE_AI_RECRUITMENT !== undefined
+      ? process.env.ENABLE_AI_RECRUITMENT === 'true' ||
+        process.env.ENABLE_AI_RECRUITMENT === '1'
+      : Boolean((process.env.OPENAI_API_KEY ?? '').trim()),
+  aiRecruitmentRateLimitWindowMs: parsePositiveInt(
+    'AI_RECRUITMENT_RATE_LIMIT_WINDOW_MS',
+    String(15 * 60 * 1000),
+  ),
+  aiRecruitmentRateLimitMax: parsePositiveInt('AI_RECRUITMENT_RATE_LIMIT_MAX', '40'),
+  /** Realtime chat via Socket.IO (default on). */
+  enableChat:
+    process.env.ENABLE_CHAT !== undefined
+      ? process.env.ENABLE_CHAT === 'true' || process.env.ENABLE_CHAT === '1'
+      : true,
   isDevelopment: nodeEnv === 'development',
   isProduction,
 } as const;

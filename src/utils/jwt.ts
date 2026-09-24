@@ -19,6 +19,9 @@ export function signAccessToken(payload: AccessTokenPayload): string {
   if (payload.adminUserId) {
     claims.adminUserId = payload.adminUserId;
   }
+  if (payload.jti) {
+    claims.jti = payload.jti;
+  }
 
   return jwt.sign(claims, env.jwtSecret, options);
 }
@@ -39,6 +42,9 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
 
   if (typeof decoded.adminUserId === 'string' && decoded.adminUserId.length > 0) {
     payload.adminUserId = decoded.adminUserId;
+  }
+  if (typeof decoded.jti === 'string' && decoded.jti.length > 0) {
+    payload.jti = decoded.jti;
   }
 
   return payload;

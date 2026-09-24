@@ -63,6 +63,13 @@ export const PERMISSIONS = {
   ANALYTICS_READ: 'analytics.read',
 
   AUDIT_LOGS_READ: 'audit_logs.read',
+
+  SUPPORT_TICKETS_READ: 'support_tickets.read',
+  SUPPORT_TICKETS_UPDATE: 'support_tickets.update',
+
+  NOTIFICATIONS_READ: 'notifications.read',
+  NOTIFICATIONS_SEND: 'notifications.send',
+  NOTIFICATIONS_MANAGE: 'notifications.manage',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -114,9 +121,14 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<AdminRole, Permission[]> = {
     P.PLANS_UPDATE,
     P.ANALYTICS_READ,
     P.AUDIT_LOGS_READ,
+    P.SUPPORT_TICKETS_READ,
+    P.SUPPORT_TICKETS_UPDATE,
     P.SETTINGS_READ,
     P.SETTINGS_CREATE,
     P.SETTINGS_UPDATE,
+    P.NOTIFICATIONS_READ,
+    P.NOTIFICATIONS_SEND,
+    P.NOTIFICATIONS_MANAGE,
   ],
   moderator: [
     P.CANDIDATES_READ,
@@ -134,6 +146,8 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<AdminRole, Permission[]> = {
     P.REPORTS_RESOLVE,
     P.ARTICLES_READ,
     P.ANALYTICS_READ,
+    P.SUPPORT_TICKETS_READ,
+    P.SUPPORT_TICKETS_UPDATE,
   ],
   support: [
     P.USERS_READ,
@@ -150,6 +164,8 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<AdminRole, Permission[]> = {
     P.SUBSCRIPTIONS_READ,
     P.PLANS_READ,
     P.ANALYTICS_READ,
+    P.SUPPORT_TICKETS_READ,
+    P.SUPPORT_TICKETS_UPDATE,
     P.SETTINGS_READ,
   ],
 };

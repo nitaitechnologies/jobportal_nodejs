@@ -30,12 +30,14 @@ export function isTerminalApplicationStatus(status: ApplicationStatus): boolean 
 
 export function employerTimestampField(
   status: ApplicationStatus,
-): 'viewedAt' | 'shortlistedAt' | 'rejectedAt' | 'hiredAt' | null {
+): 'viewedAt' | 'shortlistedAt' | 'interviewAt' | 'rejectedAt' | 'hiredAt' | null {
   switch (status) {
     case 'viewed':
       return 'viewedAt';
     case 'shortlisted':
       return 'shortlistedAt';
+    case 'interview':
+      return 'interviewAt';
     case 'rejected':
       return 'rejectedAt';
     case 'hired':

@@ -56,6 +56,15 @@ export function canEmployerReschedule(status: InterviewStatus): boolean {
   );
 }
 
+/** Candidate may propose a new time for active interviews. */
+export function canCandidateReschedule(status: InterviewStatus): boolean {
+  return canEmployerReschedule(status);
+}
+
 export function canEmployerComplete(status: InterviewStatus): boolean {
   return canTransitionInterviewStatus(status, 'completed');
+}
+
+export function canEmployerMarkNoShow(status: InterviewStatus): boolean {
+  return canTransitionInterviewStatus(status, 'no-show');
 }

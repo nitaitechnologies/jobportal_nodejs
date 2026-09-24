@@ -7,6 +7,7 @@ import {
   SUBSCRIPTION_ADMIN_FORBIDDEN_FIELDS,
   adminPlanQuerySchema,
   adminSubscriptionCreateSchema,
+  employerAutoRenewUpdateSchema,
   employerSubscriptionQuerySchema,
   planIdParamSchema,
   planSlugParamSchema,
@@ -166,5 +167,20 @@ export function validateSubscriptionIdParam(
   const data = validateWithSchema(subscriptionIdParamSchema, req.params, next, 'params');
   if (!data) return;
   req.params.id = data.id;
+  next();
+}
+
+export function validateEmployerAutoRenewUpdate(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): void {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    next(new AppError('Invalid request body', HTTP_STATUS.BAD_REQUEST));
+    return;
+  }
+  const data = validateWithSchema(employerAutoRenewUpdateSchema, req.body, next);
+  if (!data) return;
+  req.body = data;
   next();
 }

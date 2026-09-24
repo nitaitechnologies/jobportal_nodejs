@@ -17,6 +17,7 @@ export function createEmptySummary(): SeedSummary {
     reports: 0,
     plans: 0,
     subscriptions: 0,
+    coupons: 0,
     analyticsEvents: 0,
     mediaFiles: 0,
   };

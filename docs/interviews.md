@@ -1,8 +1,6 @@
-# Interviews (B16)
+# Interviews (B16 + Candidate 124–132)
 
-Interview scheduling for employer-managed applications. Reuses the B3 `Interview` model.
-
-Notifications, calendar sync, and video providers are **not** included (see B17+).
+Interview scheduling for employer-managed applications. Candidate upcoming list, accept/decline, reschedule, location/meeting link, status, and 24h/1h reminders.
 
 ## Domain
 
@@ -25,6 +23,8 @@ Server resolves `candidateId`, `employerId`, `companyId`, and `jobId` from the a
 | `notes` | optional |
 | `status` | server-controlled |
 | `cancellationReason` | set on cancel/decline |
+| `reminder24hSentAt` | set by reminder worker (130) |
+| `reminder1hSentAt` | set by reminder worker (131) |
 
 ## Status lifecycle
 
@@ -35,23 +35,25 @@ rescheduled→ confirmed | completed | cancelled | declined | no-show
 completed / cancelled / declined / no-show → terminal
 ```
 
-`confirmed` and `declined` were added in B16 (backward-compatible enum extension).
-
 Active statuses (block a second interview on the same application):
 
 ```text
 scheduled | confirmed | rescheduled
 ```
 
-## Application eligibility (B14-aligned)
+## Candidate features (sheet 124–132)
 
-Create only when application status is:
-
-```text
-shortlisted | interview
-```
-
-Creating an interview moves `shortlisted` → `interview`. Terminal application statuses cannot be interviewed.
+| ID | Feature | Implementation |
+|----|---------|----------------|
+| 124 | Upcoming interviews | `GET .../interviews?upcoming=true` + dashboard preview |
+| 125 | Company/position/date/time | Mapped on every candidate interview payload |
+| 126 | Location | `location` on detail/card (onsite) |
+| 127 | Online meeting link | `meetingLink` https + Join CTA |
+| 128 | Accept/decline | `PATCH .../confirm` + `PATCH .../decline` |
+| 129 | Reschedule | `PATCH .../reschedule` (candidate proposes new time) |
+| 130 | 24-hour reminder | `INTERVIEW_REMINDER_24H` via worker |
+| 131 | 1-hour reminder | `INTERVIEW_REMINDER_1H` via worker |
+| 132 | Interview status | Status enum + UI tabs/badges |
 
 ## Employer endpoints
 
@@ -67,44 +69,38 @@ JWT + role `employer`. Ownership: Employer → Company → Application/Interview
 | `PATCH` | `/api/v1/employer/interviews/:id/cancel` | Cancel (optional reason) |
 | `PATCH` | `/api/v1/employer/interviews/:id/complete` | Mark completed |
 
-### Create body
-
-```json
-{
-  "applicationId": "...",
-  "scheduledAt": "2026-10-05T11:00:00.000Z",
-  "duration": 45,
-  "type": "online",
-  "meetingLink": "https://meet.example.com/abc",
-  "location": "",
-  "interviewer": "Hiring Manager",
-  "notes": "First round"
-}
-```
-
-Rejected on create: `candidateId`, `employerId`, `companyId`, `jobId`, `status`, past `scheduledAt`, unsafe URLs, duplicate active interview.
-
 ## Candidate endpoints
 
 JWT + role `candidate`. Ownership from JWT → Candidate.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/v1/candidate/interviews` | List (`page`, `limit`, `status`) |
+| `GET` | `/api/v1/candidate/interviews` | List (`page`, `limit`, `status`, `upcoming`) |
 | `GET` | `/api/v1/candidate/interviews/:id` | Detail |
-| `PATCH` | `/api/v1/candidate/interviews/:id/confirm` | `scheduled`/`rescheduled` → `confirmed` |
+| `PATCH` | `/api/v1/candidate/interviews/:id/confirm` | Accept (`scheduled`/`rescheduled` → `confirmed`) |
 | `PATCH` | `/api/v1/candidate/interviews/:id/decline` | Decline (optional reason) |
+| `PATCH` | `/api/v1/candidate/interviews/:id/reschedule` | Propose new `scheduledAt` → `rescheduled` |
 
 Candidate responses include job + company summaries. Employer auth secrets are never exposed.
 
+### Candidate reschedule body
+
+```json
+{
+  "scheduledAt": "2026-10-06T11:00:00.000Z",
+  "duration": 45,
+  "notes": "Prefer afternoon slot"
+}
+```
+
+## Reminders (130–131)
+
+```bash
+npm run worker:interview-reminders
+```
+
+Cron every 15–60 minutes. For each active interview whose `scheduledAt` is ≈ now+24h or ≈ now+1h (±15m), sends in-app notification once (`reminder24hSentAt` / `reminder1hSentAt`). Reschedule clears those flags so reminders fire again for the new time.
+
 ## Sorting & pagination
 
-Lists sort by `scheduledAt ASC`, then `createdAt DESC`. Pagination matches other modules: `{ page, limit, total, totalPages }`.
-
-## Security
-
-- IDOR blocked via companyId / candidateId filters
-- Mass assignment blocked for ownership/status fields
-- MongoDB operators rejected in bodies
-- `meetingLink` must be `https:`
-- Cancel/decline soft-status only (no hard delete)
+Lists sort by `scheduledAt ASC`, then `createdAt DESC`. Pagination: `{ page, limit, total, totalPages }`.

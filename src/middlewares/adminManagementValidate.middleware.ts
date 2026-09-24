@@ -11,6 +11,7 @@ import {
   adminCompanyListQuerySchema,
   adminCompanyStatusSchema,
   adminCompanyVerificationSchema,
+  adminCompanyDocumentDownloadParamSchema,
   adminEmployerListQuerySchema,
   adminEmployerStatusSchema,
   adminIdParamSchema,
@@ -108,6 +109,20 @@ function attachQuery<T>(req: Request, data: T): void {
 
 export function validateAdminIdParam(req: Request, _res: Response, next: NextFunction): void {
   const data = validateWithSchema(adminIdParamSchema, req.params, next, 'params');
+  if (data) next();
+}
+
+export function validateAdminCompanyDocumentDownloadParam(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): void {
+  const data = validateWithSchema(
+    adminCompanyDocumentDownloadParamSchema,
+    req.params,
+    next,
+    'params',
+  );
   if (data) next();
 }
 

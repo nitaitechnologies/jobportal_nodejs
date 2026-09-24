@@ -74,6 +74,24 @@ export const publicAndAuthPaths: OpenAPIV3.PathsObject = {
         { name: 'featured', in: 'query', schema: { type: 'boolean' } },
         { name: 'urgent', in: 'query', schema: { type: 'boolean' } },
         {
+          name: 'fresherMode',
+          in: 'query',
+          schema: {
+            type: 'string',
+            enum: [
+              'fresher',
+              'internship',
+              'no-experience',
+              'training',
+              'entry-level',
+              'graduate',
+              '10th',
+              '12th',
+            ],
+          },
+          description: 'Fresher Mode presets (sheet 149–156)',
+        },
+        {
           name: 'sort',
           in: 'query',
           schema: {
@@ -256,6 +274,74 @@ export const publicAndAuthPaths: OpenAPIV3.PathsObject = {
       requestBody: jsonBody({ $ref: '#/components/schemas/LoginRequest' }),
       data: { $ref: '#/components/schemas/AuthTokens' },
       errors: ['400', '401', '429'],
+    }),
+  },
+  '/api/v1/candidate/auth/otp/send': {
+    post: publicOp({
+      operationId: 'candidateOtpSend',
+      tags: ['Candidate Auth'],
+      summary: 'Send mobile OTP (dummy 123456 until SMS is wired)',
+      requestBody: jsonBody({ $ref: '#/components/schemas/CandidateOtpSendRequest' }),
+      data: obj,
+      errors: ['400', '429'],
+    }),
+  },
+  '/api/v1/candidate/auth/otp/verify': {
+    post: {
+      ...publicOp({
+        operationId: 'candidateOtpVerify',
+        tags: ['Candidate Auth'],
+        summary: 'Verify mobile OTP — signup or login',
+        requestBody: jsonBody({ $ref: '#/components/schemas/CandidateOtpVerifyRequest' }),
+        data: { $ref: '#/components/schemas/AuthTokens' },
+        errors: ['400', '401', '403', '429'],
+      }),
+      responses: {
+        '200': emptyOk('Logged in', 'Candidate login successful'),
+        '201': emptyOk('Registered', 'Candidate registration successful'),
+        ...standardErrors(['400', '401', '403', '429']),
+      },
+    },
+  },
+  '/api/v1/candidate/auth/password/forgot': {
+    post: publicOp({
+      operationId: 'candidatePasswordForgot',
+      tags: ['Candidate Auth'],
+      summary: 'Request password-reset OTP (dummy 123456 until email/SMS is wired)',
+      requestBody: jsonBody({ $ref: '#/components/schemas/CandidatePasswordForgotRequest' }),
+      data: obj,
+      errors: ['400', '429'],
+    }),
+  },
+  '/api/v1/candidate/auth/password/reset': {
+    post: publicOp({
+      operationId: 'candidatePasswordReset',
+      tags: ['Candidate Auth'],
+      summary: 'Reset password with OTP',
+      requestBody: jsonBody({ $ref: '#/components/schemas/CandidatePasswordResetRequest' }),
+      data: obj,
+      errors: ['400', '401', '429'],
+    }),
+  },
+  '/api/v1/candidate/auth/deactivate': {
+    post: op({
+      operationId: 'candidateDeactivate',
+      tags: ['Candidate Auth'],
+      summary: 'Deactivate candidate account (status → inactive)',
+      security: bearer(),
+      data: obj,
+      errors: ['401', '403', '404', '409', '429'],
+    }),
+  },
+  '/api/v1/candidate/auth/account/delete': {
+    post: op({
+      operationId: 'candidateDeleteAccount',
+      tags: ['Candidate Auth'],
+      summary: 'Soft-delete candidate account',
+      security: bearer(),
+      requestBody: jsonBody({ $ref: '#/components/schemas/CandidateAccountDeleteRequest' }),
+      data: obj,
+      errors: ['400', '401', '403', '404', '429'],
     }),
   },
   '/api/v1/candidate/auth/logout': {

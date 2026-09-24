@@ -12,8 +12,11 @@ import {
   EMPLOYMENT_TYPES,
   INTERVIEW_STATUSES,
   INTERVIEW_TYPES,
+  INVITATION_STATUSES,
   JOB_STATUSES,
   LOCATION_TYPES,
+  NOTIFICATION_TYPES,
+  ALERT_FREQUENCIES,
   PLAN_STATUSES,
   PROFILE_VISIBILITY,
   REPORT_REASONS,
@@ -142,6 +145,9 @@ export const components: OpenAPIV3.ComponentsObject = {
     WorkMode: strEnum(WORK_MODES),
     EmploymentType: strEnum(EMPLOYMENT_TYPES),
     ApplicationStatus: strEnum(APPLICATION_STATUSES),
+    InvitationStatus: strEnum(INVITATION_STATUSES),
+    NotificationType: strEnum(NOTIFICATION_TYPES),
+    AlertFrequency: strEnum(ALERT_FREQUENCIES),
     InterviewType: strEnum(INTERVIEW_TYPES),
     InterviewStatus: strEnum(INTERVIEW_STATUSES),
     ProfileVisibility: strEnum(PROFILE_VISIBILITY),
@@ -191,6 +197,76 @@ export const components: OpenAPIV3.ComponentsObject = {
       properties: {
         email: { type: 'string', format: 'email', example: 'user@example.com' },
         password: { type: 'string', minLength: 8, maxLength: 128, example: 'SecurePass123' },
+      },
+    },
+    CandidateOtpSendRequest: {
+      type: 'object',
+      required: ['phone'],
+      properties: {
+        phone: {
+          type: 'string',
+          example: '9876543210',
+          description: '10-digit Indian mobile number',
+        },
+      },
+    },
+    CandidateOtpVerifyRequest: {
+      type: 'object',
+      required: ['phone', 'otp'],
+      properties: {
+        phone: { type: 'string', example: '9876543210' },
+        otp: {
+          type: 'string',
+          example: '123456',
+          description: 'Dummy OTP is 123456 until SMS provider is wired (CANDIDATE_OTP_DUMMY)',
+        },
+        name: {
+          type: 'string',
+          minLength: 2,
+          maxLength: 120,
+          example: 'Priya Sharma',
+          description: 'Required for first-time mobile signup; optional for returning users',
+        },
+      },
+    },
+    CandidatePasswordForgotRequest: {
+      type: 'object',
+      properties: {
+        email: { type: 'string', format: 'email', example: 'priya@example.com' },
+        phone: { type: 'string', example: '9876543210' },
+      },
+      description: 'Provide exactly one of email or phone',
+    },
+    CandidatePasswordResetRequest: {
+      type: 'object',
+      required: ['otp', 'password'],
+      properties: {
+        email: { type: 'string', format: 'email', example: 'priya@example.com' },
+        phone: { type: 'string', example: '9876543210' },
+        otp: {
+          type: 'string',
+          example: '123456',
+          description: 'Dummy reset code is 123456 (CANDIDATE_OTP_DUMMY) until email/SMS is wired',
+        },
+        password: {
+          type: 'string',
+          minLength: 8,
+          maxLength: 128,
+          example: 'NewSecurePass123',
+          description: 'Min 8 chars with at least one letter and one number',
+        },
+      },
+      description: 'Provide exactly one of email or phone, plus otp and new password',
+    },
+    CandidateAccountDeleteRequest: {
+      type: 'object',
+      required: ['confirm'],
+      properties: {
+        confirm: {
+          type: 'boolean',
+          example: true,
+          description: 'Must be true to confirm permanent account deletion',
+        },
       },
     },
     EmployerRegisterRequest: {
@@ -251,11 +327,16 @@ export const components: OpenAPIV3.ComponentsObject = {
       type: 'object',
       additionalProperties: false,
       properties: {
-        coverLetter: { type: 'string', maxLength: 5000 },
+        coverLetter: { type: 'string', maxLength: 10000 },
         resume: {
           type: 'string',
           maxLength: 500,
           description: 'Optional owned media:<id> or http(s) URL; defaults to profile resume',
+        },
+        videoResume: {
+          type: 'string',
+          maxLength: 500,
+          description: 'Optional owned media:<id> video resume when feature enabled',
         },
         answers: {
           type: 'array',
@@ -267,6 +348,79 @@ export const components: OpenAPIV3.ComponentsObject = {
             },
           },
         },
+      },
+    },
+
+    InvitationCreateRequest: {
+      type: 'object',
+      required: ['candidateId', 'jobId'],
+      additionalProperties: false,
+      properties: {
+        candidateId: { $ref: '#/components/schemas/ObjectId' },
+        jobId: { $ref: '#/components/schemas/ObjectId' },
+        message: { type: 'string', maxLength: 2000 },
+        expiresAt: { type: 'string', format: 'date-time' },
+      },
+    },
+
+    SavedSearchCreateRequest: {
+      type: 'object',
+      required: ['name'],
+      additionalProperties: false,
+      properties: {
+        name: { type: 'string', maxLength: 120 },
+        frequency: { $ref: '#/components/schemas/AlertFrequency' },
+        isActive: { type: 'boolean' },
+        filters: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            q: { type: 'string' },
+            categoryId: { $ref: '#/components/schemas/ObjectId' },
+            locationId: { $ref: '#/components/schemas/ObjectId' },
+            workMode: { $ref: '#/components/schemas/WorkMode' },
+            employmentType: { $ref: '#/components/schemas/EmploymentType' },
+            experienceMin: { type: 'number' },
+            experienceMax: { type: 'number' },
+            salaryMin: { type: 'number' },
+            salaryMax: { type: 'number' },
+            featured: { type: 'boolean' },
+            urgent: { type: 'boolean' },
+            government: { type: 'boolean' },
+            lat: { type: 'number' },
+            lng: { type: 'number' },
+            radiusKm: { type: 'number' },
+            skills: { type: 'array', items: { type: 'string' } },
+          },
+        },
+      },
+    },
+
+    SavedSearchUpdateRequest: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        name: { type: 'string', maxLength: 120 },
+        frequency: { $ref: '#/components/schemas/AlertFrequency' },
+        isActive: { type: 'boolean' },
+        filters: { type: 'object' },
+      },
+    },
+
+    AlertSettingsUpdateRequest: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        matchingJobs: { type: 'boolean' },
+        matchScoreMin: { type: 'integer', minimum: 0, maximum: 100 },
+        nearbyJobs: { type: 'boolean' },
+        nearbyRadiusKm: { type: 'number' },
+        salaryAlerts: { type: 'boolean' },
+        hotJobs: { type: 'boolean' },
+        deadlineAlerts: { type: 'boolean' },
+        deadlineDays: { type: 'integer', minimum: 1, maximum: 30 },
+        governmentJobs: { type: 'boolean' },
+        digestFrequency: { $ref: '#/components/schemas/AlertFrequency' },
       },
     },
 
@@ -286,6 +440,22 @@ export const components: OpenAPIV3.ComponentsObject = {
         },
         interviewer: { type: 'string', maxLength: 200 },
         notes: { type: 'string' },
+      },
+    },
+
+    InterviewRescheduleRequest: {
+      type: 'object',
+      required: ['scheduledAt'],
+      properties: {
+        scheduledAt: { type: 'string', format: 'date-time' },
+        duration: { type: 'integer', minimum: 5, maximum: 480 },
+        location: { type: 'string' },
+        meetingLink: {
+          type: 'string',
+          format: 'uri',
+          description: 'https only',
+        },
+        notes: { type: 'string', maxLength: 5000 },
       },
     },
 

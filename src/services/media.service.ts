@@ -10,6 +10,7 @@ import {
 import { MediaFile } from '../models/MediaFile';
 import { AppError } from '../utils/AppError';
 import { mapSafeMedia, parseMediaRef, publicMediaUrl, toMediaRef } from '../utils/mediaMapper';
+import { optimizeImageBuffer } from '../utils/imageOptimize';
 import { validateUploadedFile } from '../utils/mediaValidator';
 import { getStorageAdapter } from './storage';
 
@@ -74,14 +75,30 @@ export async function uploadMedia(input: UploadMediaInput) {
     durationSeconds: input.durationSeconds,
   });
 
+  // Sheet 464 — optimize images (WebP + max edge) after validation; never block upload.
+  const optimized = await optimizeImageBuffer(validated.buffer, validated.mimeType);
+  const stored = optimized
+    ? {
+        buffer: optimized.buffer,
+        mimeType: optimized.mimeType,
+        extension: optimized.extension,
+        size: optimized.size,
+      }
+    : {
+        buffer: validated.buffer,
+        mimeType: validated.mimeType,
+        extension: validated.extension,
+        size: validated.size,
+      };
+
   const storage = getStorageAdapter();
-  const storageKey = buildStorageKey(validated.category, validated.extension);
+  const storageKey = buildStorageKey(validated.category, stored.extension);
   const visibility = MEDIA_CATEGORY_VISIBILITY[validated.category];
 
   await storage.upload({
     storageKey,
-    buffer: validated.buffer,
-    mimeType: validated.mimeType,
+    buffer: stored.buffer,
+    mimeType: stored.mimeType,
   });
 
   let media;
@@ -95,9 +112,9 @@ export async function uploadMedia(input: UploadMediaInput) {
       visibility,
       originalName: validated.originalName,
       storedName: path.posix.basename(storageKey),
-      mimeType: validated.mimeType,
-      extension: validated.extension,
-      size: validated.size,
+      mimeType: stored.mimeType,
+      extension: stored.extension,
+      size: stored.size,
       storageProvider: storage.provider,
       storageKey,
       status: 'active',

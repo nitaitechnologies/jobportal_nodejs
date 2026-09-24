@@ -111,4 +111,134 @@ describe('Candidate auth', () => {
     const profile = await api().get('/api/v1/candidate/profile').set(session.header);
     await expectErrorShape(profile, 403);
   });
+
+  it('signs up and logs in with dummy mobile OTP 123456', async () => {
+    const phone = uniquePhone();
+    const send = await api().post('/api/v1/candidate/auth/otp/send').send({ phone });
+    expect(send.status).toBe(200);
+    expect(send.body.data.dummy).toBe(true);
+    expect(send.body.data.expiresIn).toBeGreaterThan(0);
+
+    const missingName = await api()
+      .post('/api/v1/candidate/auth/otp/verify')
+      .send({ phone, otp: '123456' });
+    await expectErrorShape(missingName, 400);
+
+    const wrong = await api()
+      .post('/api/v1/candidate/auth/otp/verify')
+      .send({ phone, otp: '000000', name: 'OTP User' });
+    await expectErrorShape(wrong, 401);
+
+    // send again after failed attempt consumed attempt counter but not the code
+    await api().post('/api/v1/candidate/auth/otp/send').send({ phone });
+
+    const signup = await api()
+      .post('/api/v1/candidate/auth/otp/verify')
+      .send({ phone, otp: '123456', name: 'OTP User' });
+    expect(signup.status).toBe(201);
+    expect(signup.body.data.accessToken).toEqual(expect.any(String));
+    expect(signup.body.data.isNewUser).toBe(true);
+    expect(signup.body.data.user.phone).toBe(phone);
+    expect(JSON.stringify(signup.body)).not.toMatch(/passwordHash/);
+
+    await api().post('/api/v1/candidate/auth/otp/send').send({ phone });
+    const login = await api()
+      .post('/api/v1/candidate/auth/otp/verify')
+      .send({ phone, otp: '123456' });
+    expect(login.status).toBe(200);
+    expect(login.body.data.isNewUser).toBe(false);
+    expect(login.body.data.accessToken).toEqual(expect.any(String));
+
+    const me = await api()
+      .get('/api/v1/candidate/auth/me')
+      .set(authHeader(login.body.data.accessToken));
+    expect(me.status).toBe(200);
+  });
+
+  it('resets password with dummy OTP 123456 via email', async () => {
+    const { payload } = await createAndLoginCandidate();
+    const forgot = await api()
+      .post('/api/v1/candidate/auth/password/forgot')
+      .send({ email: payload.email });
+    expect(forgot.status).toBe(200);
+    expect(forgot.body.data.dummy).toBe(true);
+    expect(forgot.body.data.channel).toBe('email');
+
+    const wrong = await api().post('/api/v1/candidate/auth/password/reset').send({
+      email: payload.email,
+      otp: '000000',
+      password: 'BrandNewPass99',
+    });
+    await expectErrorShape(wrong, 401);
+
+    await api().post('/api/v1/candidate/auth/password/forgot').send({ email: payload.email });
+
+    const reset = await api().post('/api/v1/candidate/auth/password/reset').send({
+      email: payload.email,
+      otp: '123456',
+      password: 'BrandNewPass99',
+    });
+    expect(reset.status).toBe(200);
+    expect(reset.body.data.reset).toBe(true);
+
+    const oldLogin = await api().post('/api/v1/candidate/auth/login').send({
+      email: payload.email,
+      password: payload.password,
+    });
+    await expectErrorShape(oldLogin, 401);
+
+    const newLogin = await api().post('/api/v1/candidate/auth/login').send({
+      email: payload.email,
+      password: 'BrandNewPass99',
+    });
+    expect(newLogin.status).toBe(200);
+    expect(newLogin.body.data.accessToken).toEqual(expect.any(String));
+  });
+
+  it('deactivates account and blocks further login/me', async () => {
+    const session = await createAndLoginCandidate();
+    const deactivate = await api()
+      .post('/api/v1/candidate/auth/deactivate')
+      .set(session.header);
+    expect(deactivate.status).toBe(200);
+    expect(deactivate.body.data.deactivated).toBe(true);
+    expect(deactivate.body.data.status).toBe('inactive');
+
+    const me = await api().get('/api/v1/candidate/auth/me').set(session.header);
+    await expectErrorShape(me, 403);
+
+    const login = await api().post('/api/v1/candidate/auth/login').send({
+      email: session.payload.email,
+      password: session.payload.password,
+    });
+    await expectErrorShape(login, 401);
+  });
+
+  it('soft-deletes account and frees email for re-registration', async () => {
+    const session = await createAndLoginCandidate();
+    const missingConfirm = await api()
+      .post('/api/v1/candidate/auth/account/delete')
+      .set(session.header)
+      .send({});
+    await expectErrorShape(missingConfirm, 400);
+
+    const deleted = await api()
+      .post('/api/v1/candidate/auth/account/delete')
+      .set(session.header)
+      .send({ confirm: true });
+    expect(deleted.status).toBe(200);
+    expect(deleted.body.data.deleted).toBe(true);
+
+    const login = await api().post('/api/v1/candidate/auth/login').send({
+      email: session.payload.email,
+      password: session.payload.password,
+    });
+    await expectErrorShape(login, 401);
+
+    const rereg = await registerCandidate({
+      email: session.payload.email,
+      phone: session.payload.phone,
+    });
+    expect(rereg.res.status).toBe(201);
+  });
 });

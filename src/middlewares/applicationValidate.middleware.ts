@@ -6,10 +6,17 @@ import { parseRequestSchema } from '../utils/validation';
 import {
   APPLICATION_FORBIDDEN_FIELDS,
   applicationApplySchema,
+  applicationBulkMessageSchema,
+  applicationBulkStatusSchema,
   applicationIdParamSchema,
+  applicationInternalRatingSchema,
+  applicationNoteIdParamSchema,
+  applicationNotesUpdateSchema,
   applicationStatusUpdateSchema,
   candidateApplicationQuerySchema,
+  employerApplicationExportQuerySchema,
   employerApplicationQuerySchema,
+  employerApplicationStatsQuerySchema,
   jobIdParamSchema,
 } from '../validators/application.validator';
 
@@ -124,5 +131,113 @@ export function validateApplicationStatusUpdate(
     return;
   }
   req.body = data;
+  next();
+}
+
+export function validateApplicationNotesUpdate(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): void {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    next(new AppError('Invalid request body', HTTP_STATUS.BAD_REQUEST));
+    return;
+  }
+  const data = validateWithSchema(applicationNotesUpdateSchema, req.body, next);
+  if (!data) {
+    return;
+  }
+  req.body = data;
+  next();
+}
+
+export function validateApplicationInternalRating(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): void {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    next(new AppError('Invalid request body', HTTP_STATUS.BAD_REQUEST));
+    return;
+  }
+  const data = validateWithSchema(applicationInternalRatingSchema, req.body, next);
+  if (!data) {
+    return;
+  }
+  req.body = data;
+  next();
+}
+
+export function validateApplicationNoteIdParam(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): void {
+  const data = validateWithSchema(applicationNoteIdParamSchema, req.params, next, 'params');
+  if (!data) {
+    return;
+  }
+  req.params.id = data.id;
+  req.params.noteId = data.noteId;
+  next();
+}
+
+export function validateApplicationBulkStatus(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): void {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    next(new AppError('Invalid request body', HTTP_STATUS.BAD_REQUEST));
+    return;
+  }
+  const data = validateWithSchema(applicationBulkStatusSchema, req.body, next);
+  if (!data) {
+    return;
+  }
+  req.body = data;
+  next();
+}
+
+export function validateApplicationBulkMessage(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): void {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    next(new AppError('Invalid request body', HTTP_STATUS.BAD_REQUEST));
+    return;
+  }
+  const data = validateWithSchema(applicationBulkMessageSchema, req.body, next);
+  if (!data) {
+    return;
+  }
+  req.body = data;
+  next();
+}
+
+export function validateEmployerApplicationStatsQuery(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): void {
+  const data = validateWithSchema(employerApplicationStatsQuerySchema, req.query, next, 'query');
+  if (!data) {
+    return;
+  }
+  (req as Request & { validatedQuery?: unknown }).validatedQuery = data;
+  next();
+}
+
+export function validateEmployerApplicationExportQuery(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): void {
+  const data = validateWithSchema(employerApplicationExportQuerySchema, req.query, next, 'query');
+  if (!data) {
+    return;
+  }
+  (req as Request & { validatedQuery?: unknown }).validatedQuery = data;
   next();
 }

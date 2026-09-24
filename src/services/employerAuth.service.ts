@@ -1,34 +1,45 @@
 import mongoose from 'mongoose';
+import { env } from '../config/env';
 import { Company } from '../models/Company';
 import { Employer } from '../models/Employer';
 import { User } from '../models/User';
 import { HTTP_STATUS } from '../constants';
+import type { EmployerTeamRole } from '../constants/enums';
+import { permissionsForTeamRole } from '../constants/employerPermissions';
 import { AppError } from '../utils/AppError';
 import { comparePassword, hashPassword } from '../utils/password';
-import { signAccessToken } from '../utils/jwt';
 import { createUniqueSlug } from '../utils/slug';
 import type {
   EmployerLoginInput,
   EmployerRegisterInput,
+  EmployerVerifyOtpInput,
 } from '../validators/employerAuth.validator';
 import { getFeatureFlags } from '../utils/featureFlags';
 import { trackSafely } from './analytics.service';
+import { authSessionService, type SessionDeviceMeta } from './authSession.service';
+import { otpService } from './otp.service';
 
 const INVALID_CREDENTIALS = 'Invalid email or password';
 
 export interface EmployerAuthResult {
   accessToken: string;
+  sessionId?: string;
   user: {
     id: string;
     name: string;
     email: string;
     phone: string;
     role: 'employer';
+    phoneVerified: boolean;
+    emailVerified: boolean;
   };
   employer: {
     id: string;
     companyId: string;
+    teamRole: EmployerTeamRole;
     designation?: string;
+    permissions: string[];
+    verified: boolean;
   };
   company: {
     id: string;
@@ -42,6 +53,11 @@ export interface EmployerAuthResult {
     videoResumeEnabled: boolean;
     videoMaxBytes: number;
     videoMaxSeconds: number;
+    aiResumeEnabled: boolean;
+    aiMatchingEnabled: boolean;
+    aiCareerCoachEnabled: boolean;
+    aiRecruitmentEnabled: boolean;
+    chatEnabled: boolean;
   };
 }
 
@@ -51,8 +67,82 @@ function withFeatures<T extends object>(
   return { ...payload, features: getFeatureFlags() };
 }
 
+function resolveTeamRole(input: EmployerRegisterInput): EmployerTeamRole {
+  const raw = (input.teamRole ?? '').trim().toLowerCase();
+  if (raw === 'hr') return 'hr';
+  if (raw === 'recruiter') return 'recruiter';
+  return 'owner';
+}
+
+function designationFor(role: EmployerTeamRole, explicit?: string): string {
+  if (explicit?.trim()) return explicit.trim().slice(0, 120);
+  if (role === 'owner') return 'Owner';
+  if (role === 'hr') return 'HR';
+  return 'Recruiter';
+}
+
+function mapAuthPayload(
+  user: {
+    _id: { toString(): string };
+    name: string;
+    email: string;
+    phone?: string | null;
+    phoneVerified?: boolean;
+    emailVerified?: boolean;
+  },
+  employer: {
+    _id: { toString(): string };
+    companyId?: { toString(): string } | null;
+    teamRole?: string | null;
+    designation?: string | null;
+    verified?: boolean;
+  },
+  company: {
+    _id: { toString(): string };
+    name: string;
+    slug: string;
+    verificationStatus: string;
+    status?: string;
+  },
+  accessToken: string,
+  sessionId?: string,
+): EmployerAuthResult {
+  const teamRole = (employer.teamRole as EmployerTeamRole) || 'owner';
+  return withFeatures({
+    accessToken,
+    sessionId,
+    user: {
+      id: user._id.toString(),
+      name: user.name,
+      email: user.email,
+      phone: user.phone ?? '',
+      role: 'employer',
+      phoneVerified: Boolean(user.phoneVerified),
+      emailVerified: Boolean(user.emailVerified),
+    },
+    employer: {
+      id: employer._id.toString(),
+      companyId: (employer.companyId ?? company._id).toString(),
+      teamRole,
+      designation: employer.designation || undefined,
+      permissions: permissionsForTeamRole(teamRole),
+      verified: Boolean(employer.verified),
+    },
+    company: {
+      id: company._id.toString(),
+      name: company.name,
+      slug: company.slug,
+      verificationStatus: company.verificationStatus,
+      status: company.status,
+    },
+  });
+}
+
 export class EmployerAuthService {
-  async register(input: EmployerRegisterInput): Promise<EmployerAuthResult> {
+  async register(
+    input: EmployerRegisterInput,
+    meta: SessionDeviceMeta = {},
+  ): Promise<EmployerAuthResult> {
     const existingByEmail = await User.findOne({ email: input.email }).select('_id');
     if (existingByEmail) {
       throw new AppError('An account with this email already exists', HTTP_STATUS.CONFLICT);
@@ -68,6 +158,10 @@ export class EmployerAuthService {
       const existing = await Company.findOne({ slug: value }).select('_id');
       return Boolean(existing);
     });
+
+    const teamRole = resolveTeamRole(input);
+    // First account for a new company is always owner (join existing via invite).
+    const effectiveRole: EmployerTeamRole = 'owner';
 
     let createdUserId: mongoose.Types.ObjectId | null = null;
     let createdCompanyId: mongoose.Types.ObjectId | null = null;
@@ -96,35 +190,20 @@ export class EmployerAuthService {
       const employer = await Employer.create({
         userId: user._id,
         companyId: company._id,
+        teamRole: effectiveRole,
+        designation: designationFor(effectiveRole, input.designation ?? teamRole),
         verified: false,
         status: 'active',
       });
 
-      const accessToken = signAccessToken({
-        userId: user._id.toString(),
-        role: 'employer',
-      });
+      const { accessToken, sessionId } = await authSessionService.createAccessToken(
+        user._id.toString(),
+        'employer',
+        meta,
+        { maxSessions: env.employerMaxSessions },
+      );
 
-      return withFeatures({
-        accessToken,
-        user: {
-          id: user._id.toString(),
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          role: 'employer',
-        },
-        employer: {
-          id: employer._id.toString(),
-          companyId: company._id.toString(),
-        },
-        company: {
-          id: company._id.toString(),
-          name: company.name,
-          slug: company.slug,
-          verificationStatus: company.verificationStatus,
-        },
-      });
+      return mapAuthPayload(user, employer, company, accessToken, sessionId);
     } catch (error) {
       if (createdUserId) {
         await Employer.deleteOne({ userId: createdUserId }).catch(() => undefined);
@@ -146,7 +225,10 @@ export class EmployerAuthService {
     }
   }
 
-  async login(input: EmployerLoginInput): Promise<EmployerAuthResult> {
+  async login(
+    input: EmployerLoginInput,
+    meta: SessionDeviceMeta = {},
+  ): Promise<EmployerAuthResult> {
     const user = await User.findOne({ email: input.email }).select('+passwordHash');
 
     if (!user || user.role !== 'employer' || user.deletedAt) {
@@ -175,10 +257,12 @@ export class EmployerAuthService {
     user.lastLoginAt = new Date();
     await user.save();
 
-    const accessToken = signAccessToken({
-      userId: user._id.toString(),
-      role: 'employer',
-    });
+    const { accessToken, sessionId } = await authSessionService.createAccessToken(
+      user._id.toString(),
+      'employer',
+      meta,
+      { maxSessions: env.employerMaxSessions },
+    );
 
     await trackSafely({
       eventType: 'employer_login',
@@ -190,33 +274,12 @@ export class EmployerAuthService {
       companyId: company._id,
     });
 
-    return withFeatures({
-      accessToken,
-      user: {
-        id: user._id.toString(),
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: 'employer',
-      },
-      employer: {
-        id: employer._id.toString(),
-        companyId: company._id.toString(),
-        designation: employer.designation || undefined,
-      },
-      company: {
-        id: company._id.toString(),
-        name: company.name,
-        slug: company.slug,
-        verificationStatus: company.verificationStatus,
-        status: company.status,
-      },
-    });
+    return mapAuthPayload(user, employer, company, accessToken, sessionId);
   }
 
-  async getProfile(userId: string): Promise<Omit<EmployerAuthResult, 'accessToken'>> {
+  async getProfile(userId: string): Promise<Omit<EmployerAuthResult, 'accessToken' | 'sessionId'>> {
     const [user, employer] = await Promise.all([
-      User.findById(userId).select('name email phone role status deletedAt'),
+      User.findById(userId).select('name email phone role status deletedAt phoneVerified emailVerified'),
       Employer.findOne({ userId }),
     ]);
 
@@ -233,27 +296,80 @@ export class EmployerAuthService {
       throw new AppError('Employer not found', HTTP_STATUS.NOT_FOUND);
     }
 
-    return withFeatures({
-      user: {
-        id: user._id.toString(),
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: 'employer',
-      },
-      employer: {
-        id: employer._id.toString(),
-        companyId: company._id.toString(),
-        designation: employer.designation || undefined,
-      },
-      company: {
-        id: company._id.toString(),
-        name: company.name,
-        slug: company.slug,
-        verificationStatus: company.verificationStatus,
-        status: company.status,
-      },
+    const mapped = mapAuthPayload(user, employer, company, '');
+    const { accessToken: _token, sessionId: _sid, ...rest } = mapped;
+    return rest;
+  }
+
+  async sendVerificationOtp(userId: string, channel: 'phone' | 'email') {
+    const user = await User.findById(userId).select('phone email role status');
+    if (!user || user.role !== 'employer' || user.status !== 'active') {
+      throw new AppError('Employer not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    if (channel === 'phone') {
+      const phone = (user.phone ?? '').trim();
+      if (!phone) {
+        throw new AppError('Add a phone number to your profile first', HTTP_STATUS.BAD_REQUEST);
+      }
+      const result = otpService.send(`employer:phone:${phone}`, {
+        destination: phone,
+        channel: 'sms',
+        purpose: 'employer_phone_verify',
+      });
+      return { destination: phone.replace(/.(?=.{4})/g, '•'), ...result, channel };
+    }
+
+    const email = (user.email ?? '').trim().toLowerCase();
+    if (!email) {
+      throw new AppError('Add an email to your profile first', HTTP_STATUS.BAD_REQUEST);
+    }
+    const result = otpService.send(`employer:email:${email}`, {
+      destination: email,
+      channel: 'email',
+      purpose: 'employer_email_verify',
     });
+    return { destination: email.replace(/(?<=.).(?=[^@]*?@)/g, '•'), ...result, channel };
+  }
+
+  async verifyContact(
+    userId: string,
+    input: EmployerVerifyOtpInput,
+  ): Promise<{ phoneVerified: boolean; emailVerified: boolean; verified: boolean }> {
+    const user = await User.findById(userId).select('phone email role status phoneVerified emailVerified');
+    if (!user || user.role !== 'employer' || user.status !== 'active') {
+      throw new AppError('Employer not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    if (input.channel === 'phone') {
+      const phone = (user.phone ?? '').trim();
+      otpService.verify(`employer:phone:${phone}`, input.otp);
+      user.phoneVerified = true;
+    } else {
+      const email = (user.email ?? '').trim().toLowerCase();
+      otpService.verify(`employer:email:${email}`, input.otp);
+      user.emailVerified = true;
+    }
+    await user.save();
+
+    const employer = await Employer.findOne({ userId: user._id });
+    if (employer) {
+      employer.verified = Boolean(user.phoneVerified || user.emailVerified);
+      await employer.save();
+    }
+
+    return {
+      phoneVerified: Boolean(user.phoneVerified),
+      emailVerified: Boolean(user.emailVerified),
+      verified: Boolean(employer?.verified),
+    };
+  }
+
+  async logout(userId: string, sessionId?: string) {
+    if (sessionId) {
+      return authSessionService.revoke(sessionId, userId);
+    }
+    return { revoked: false };
   }
 }
 

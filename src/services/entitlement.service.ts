@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import type { AuthenticatedEmployer } from '../types/auth.types';
+import { ContactUnlock } from '../models/ContactUnlock';
 import { Job } from '../models/Job';
 import { Subscription } from '../models/Subscription';
 
@@ -9,11 +10,17 @@ export interface PlanLimits {
   featuredJobLimit: number;
   /** Days a listing stays live after publish/renew. 0 = deadline only. */
   jobListingLifetimeDays: number;
+  /** Max candidate contact unlocks per subscription period (sheet 242). */
+  contactUnlockLimit: number;
+  /** Max results for basic (free) candidate search. 0 = unlimited. */
+  freeSearchResultLimit: number;
 }
 
 export interface PlanFeatures {
   featuredJobs: boolean;
   candidateContact: boolean;
+  /** Full filters + paid candidate database (sheet 372). */
+  advancedCandidateSearch: boolean;
 }
 
 export interface EmployerEntitlements {
@@ -28,6 +35,7 @@ export interface EmployerEntitlements {
   usage: {
     jobsPostedInPeriod: number;
     activeJobs: number;
+    contactUnlocksUsed: number;
   };
 }
 
@@ -41,12 +49,15 @@ export const FREE_ENTITLEMENTS: Omit<
   features: {
     featuredJobs: false,
     candidateContact: false,
+    advancedCandidateSearch: false,
   },
   limits: {
     jobPostLimit: 3,
     activeJobLimit: 2,
     featuredJobLimit: 0,
     jobListingLifetimeDays: 10,
+    contactUnlockLimit: 0,
+    freeSearchResultLimit: 25,
   },
 };
 
@@ -155,7 +166,38 @@ function normalizeLimits(raw: Record<string, unknown> | null | undefined): PlanL
     jobListingLifetimeDays: Number(
       raw?.jobListingLifetimeDays ?? FREE_ENTITLEMENTS.limits.jobListingLifetimeDays,
     ),
+    contactUnlockLimit: Number(
+      raw?.contactUnlockLimit ?? FREE_ENTITLEMENTS.limits.contactUnlockLimit,
+    ),
+    freeSearchResultLimit: Number(
+      raw?.freeSearchResultLimit ?? FREE_ENTITLEMENTS.limits.freeSearchResultLimit,
+    ),
   };
+}
+
+export async function countContactUnlocksInPeriod(
+  companyId: string,
+  startDate?: Date | null,
+  endDate?: Date | null,
+): Promise<number> {
+  const filter: Record<string, unknown> = {
+    companyId: new mongoose.Types.ObjectId(companyId),
+  };
+  if (startDate || endDate) {
+    filter.unlockedAt = {
+      ...(startDate ? { $gte: startDate } : {}),
+      ...(endDate ? { $lte: endDate } : {}),
+    };
+  }
+  return ContactUnlock.countDocuments(filter);
+}
+
+export function canUnlockCandidateContact(entitlements: EmployerEntitlements): boolean {
+  return entitlements.features.candidateContact === true;
+}
+
+export function hasAdvancedCandidateSearch(entitlements: EmployerEntitlements): boolean {
+  return entitlements.features.advancedCandidateSearch === true;
 }
 
 export async function getEmployerEntitlements(
@@ -164,9 +206,10 @@ export async function getEmployerEntitlements(
   const subscription = await findCurrentCompanySubscription(employer.companyId);
 
   if (!subscription || !isSubscriptionCurrentlyActive(subscription)) {
-    const [jobsPostedInPeriod, activeJobs] = await Promise.all([
+    const [jobsPostedInPeriod, activeJobs, contactUnlocksUsed] = await Promise.all([
       countJobsPostedInPeriod(employer.companyId),
       countActiveJobs(employer.companyId),
+      countContactUnlocksInPeriod(employer.companyId),
     ]);
 
     return {
@@ -175,7 +218,7 @@ export async function getEmployerEntitlements(
       subscriptionId: null,
       startDate: null,
       endDate: null,
-      usage: { jobsPostedInPeriod, activeJobs },
+      usage: { jobsPostedInPeriod, activeJobs, contactUnlocksUsed },
     };
   }
 
@@ -193,15 +236,21 @@ export async function getEmployerEntitlements(
   const features: PlanFeatures = {
     featuredJobs: Boolean(featuresRaw.featuredJobs),
     candidateContact: Boolean(featuresRaw.candidateContact),
+    advancedCandidateSearch: Boolean(featuresRaw.advancedCandidateSearch),
   };
 
-  const [jobsPostedInPeriod, activeJobs] = await Promise.all([
+  const [jobsPostedInPeriod, activeJobs, contactUnlocksUsed] = await Promise.all([
     countJobsPostedInPeriod(
       employer.companyId,
       subscription.startDate,
       subscription.endDate ?? undefined,
     ),
     countActiveJobs(employer.companyId),
+    countContactUnlocksInPeriod(
+      employer.companyId,
+      subscription.startDate,
+      subscription.endDate ?? undefined,
+    ),
   ]);
 
   return {
@@ -213,6 +262,6 @@ export async function getEmployerEntitlements(
     endDate: subscription.endDate ?? null,
     features,
     limits,
-    usage: { jobsPostedInPeriod, activeJobs },
+    usage: { jobsPostedInPeriod, activeJobs, contactUnlocksUsed },
   };
 }

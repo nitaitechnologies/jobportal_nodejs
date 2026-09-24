@@ -6,7 +6,12 @@ import { authRateLimiter } from '../middlewares/rateLimit.middleware';
 import { requireRole } from '../middlewares/role.middleware';
 import { validateBody } from '../middlewares/validate.middleware';
 import {
+  candidateAccountDeleteSchema,
   candidateLoginSchema,
+  candidateOtpSendSchema,
+  candidateOtpVerifySchema,
+  candidatePasswordForgotSchema,
+  candidatePasswordResetSchema,
   candidateRegisterSchema,
 } from '../validators/candidateAuth.validator';
 
@@ -27,6 +32,65 @@ candidateAuthRouter.post(
   validateBody(candidateLoginSchema),
   (req, res, next) => {
     void candidateAuthController.login(req, res, next);
+  },
+);
+
+candidateAuthRouter.post(
+  '/otp/send',
+  authRateLimiter,
+  validateBody(candidateOtpSendSchema),
+  (req, res, next) => {
+    void candidateAuthController.sendOtp(req, res, next);
+  },
+);
+
+candidateAuthRouter.post(
+  '/otp/verify',
+  authRateLimiter,
+  validateBody(candidateOtpVerifySchema),
+  (req, res, next) => {
+    void candidateAuthController.verifyOtp(req, res, next);
+  },
+);
+
+candidateAuthRouter.post(
+  '/password/forgot',
+  authRateLimiter,
+  validateBody(candidatePasswordForgotSchema),
+  (req, res, next) => {
+    void candidateAuthController.forgotPassword(req, res, next);
+  },
+);
+
+candidateAuthRouter.post(
+  '/password/reset',
+  authRateLimiter,
+  validateBody(candidatePasswordResetSchema),
+  (req, res, next) => {
+    void candidateAuthController.resetPassword(req, res, next);
+  },
+);
+
+candidateAuthRouter.post(
+  '/deactivate',
+  authenticate,
+  requireRole('candidate'),
+  requireCandidate,
+  authRateLimiter,
+  (req, res, next) => {
+    void candidateAuthController.deactivate(req, res, next);
+  },
+);
+
+candidateAuthRouter.post(
+  '/account/delete',
+  authenticate,
+  requireRole('candidate'),
+  requireCandidate,
+  authRateLimiter,
+  validateBody(candidateAccountDeleteSchema),
+  (req, res, next) => {
+    void candidateAuthController.deleteAccount(req, res, next);
   },
 );
 

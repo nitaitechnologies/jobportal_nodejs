@@ -13,9 +13,16 @@ export interface InterviewLike {
   location?: string | null;
   meetingLink?: string | null;
   interviewer?: string | null;
+  phoneContact?: string | null;
   notes?: string | null;
   status?: string;
   cancellationReason?: string | null;
+  feedback?: {
+    rating?: number | null;
+    outcome?: string | null;
+    notes?: string | null;
+    submittedAt?: Date | null;
+  } | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -34,9 +41,19 @@ function mapInterviewCore(interview: InterviewLike) {
     location: interview.location ?? '',
     meetingLink: interview.meetingLink ?? '',
     interviewer: interview.interviewer ?? '',
+    phoneContact: interview.phoneContact ?? '',
     notes: interview.notes ?? '',
     status: interview.status ?? 'scheduled',
     cancellationReason: interview.cancellationReason ?? '',
+    feedback: interview.feedback
+      ? {
+          rating:
+            typeof interview.feedback.rating === 'number' ? interview.feedback.rating : null,
+          outcome: interview.feedback.outcome ?? '',
+          notes: interview.feedback.notes ?? '',
+          submittedAt: interview.feedback.submittedAt ?? null,
+        }
+      : null,
     createdAt: interview.createdAt,
     updatedAt: interview.updatedAt,
   };
@@ -80,6 +97,7 @@ export function mapCandidateInterview(
     location: core.location,
     meetingLink: core.meetingLink,
     interviewer: core.interviewer,
+    phoneContact: core.phoneContact,
     notes: core.notes,
     status: core.status,
     cancellationReason: core.cancellationReason,

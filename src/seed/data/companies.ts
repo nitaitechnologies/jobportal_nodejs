@@ -10,6 +10,8 @@ export interface CompanySeedDef {
   foundedYear: number;
   description: string;
   locations: string[];
+  benefits?: string[];
+  gallery?: Array<{ url: string; type?: 'image' | 'video'; caption?: string }>;
 }
 
 export const COMPANY_DEFS: CompanySeedDef[] = [
@@ -23,6 +25,19 @@ export const COMPANY_DEFS: CompanySeedDef[] = [
     description:
       'Nimbus Softworks builds cloud-native products and custom software for mid-market clients across India.',
     locations: ['Bengaluru', 'Hyderabad', 'Pune'],
+    benefits: ['Health insurance', 'Flexible hours', 'Learning budget', 'Hybrid work'],
+    gallery: [
+      {
+        url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800',
+        type: 'image',
+        caption: 'Bengaluru office',
+      },
+      {
+        url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800',
+        type: 'image',
+        caption: 'Team collaboration',
+      },
+    ],
   },
   {
     name: 'PayOrbit Fintech',
@@ -34,6 +49,14 @@ export const COMPANY_DEFS: CompanySeedDef[] = [
     description:
       'PayOrbit helps SMEs accept digital payments with simple APIs and merchant dashboards.',
     locations: ['Mumbai', 'Gurugram'],
+    benefits: ['PF & gratuity', 'Performance bonus', 'Remote-friendly'],
+    gallery: [
+      {
+        url: 'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?w=800',
+        type: 'image',
+        caption: 'Mumbai HQ',
+      },
+    ],
   },
   {
     name: 'MediCare Connect',

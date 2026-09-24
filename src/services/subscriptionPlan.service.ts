@@ -96,6 +96,7 @@ export class SubscriptionPlanService {
         features: {
           featuredJobs: input.features?.featuredJobs ?? false,
           candidateContact: input.features?.candidateContact ?? false,
+          advancedCandidateSearch: input.features?.advancedCandidateSearch ?? false,
         },
         limits: {
           jobPostLimit: input.limits?.jobPostLimit ?? 5,
@@ -103,6 +104,8 @@ export class SubscriptionPlanService {
           featuredJobLimit: input.limits?.featuredJobLimit ?? 0,
           jobListingLifetimeDays:
             input.limits?.jobListingLifetimeDays ?? (input.price === 0 ? 10 : 0),
+          contactUnlockLimit: input.limits?.contactUnlockLimit ?? 0,
+          freeSearchResultLimit: input.limits?.freeSearchResultLimit ?? 25,
         },
         sortOrder: input.sortOrder,
         status: input.status,
@@ -174,6 +177,10 @@ export class SubscriptionPlanService {
         featuredJobs: input.features.featuredJobs ?? plan.features?.featuredJobs ?? false,
         candidateContact:
           input.features.candidateContact ?? plan.features?.candidateContact ?? false,
+        advancedCandidateSearch:
+          input.features.advancedCandidateSearch ??
+          plan.features?.advancedCandidateSearch ??
+          false,
       };
     }
     if (input.limits) {
@@ -185,6 +192,10 @@ export class SubscriptionPlanService {
           input.limits.jobListingLifetimeDays ??
           plan.limits?.jobListingLifetimeDays ??
           (plan.price === 0 ? 10 : 0),
+        contactUnlockLimit:
+          input.limits.contactUnlockLimit ?? plan.limits?.contactUnlockLimit ?? 0,
+        freeSearchResultLimit:
+          input.limits.freeSearchResultLimit ?? plan.limits?.freeSearchResultLimit ?? 25,
       };
     }
 

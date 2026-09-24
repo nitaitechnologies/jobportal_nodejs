@@ -102,6 +102,43 @@ export const candidatePaths: OpenAPIV3.PathsObject = {
       },
     },
   },
+  '/api/v1/candidate/profile/resume/ai/build': {
+    post: op({
+      operationId: 'buildAiResume',
+      tags: ['Candidate Profile', 'AI Resume'],
+      summary: 'AI resume builder (ChatGPT)',
+      description:
+        'Generates a resume draft from the candidate profile. Response always includes aiGenerated=true, aiLabel, aiDisclaimer, and uiHint so clients can label content as AI-generated. Requires OPENAI_API_KEY.',
+      requestBody: jsonBody({
+        type: 'object',
+        properties: {
+          tone: { type: 'string', enum: ['professional', 'friendly', 'concise'] },
+          focusRoles: { type: 'array', items: { type: 'string' }, maxItems: 5 },
+        },
+      }),
+      data: obj,
+      errors: ['400', '401', '403', '404', '429'],
+    }),
+  },
+  '/api/v1/candidate/profile/resume/ai/tailor': {
+    post: op({
+      operationId: 'tailorAiResumeForJob',
+      tags: ['Candidate Profile', 'AI Resume'],
+      summary: 'AI job-specific resume tailoring (ChatGPT)',
+      description:
+        'Tailors a resume draft for a specific job. Response always marks content as AI-generated. Requires OPENAI_API_KEY and a valid jobId.',
+      requestBody: jsonBody({
+        type: 'object',
+        required: ['jobId'],
+        properties: {
+          jobId: { type: 'string' },
+          tone: { type: 'string', enum: ['professional', 'friendly', 'concise'] },
+        },
+      }),
+      data: obj,
+      errors: ['400', '401', '403', '404', '429'],
+    }),
+  },
   '/api/v1/candidate/profile/skills': {
     post: op({
       operationId: 'addCandidateSkill',
@@ -250,25 +287,103 @@ export const candidatePaths: OpenAPIV3.PathsObject = {
     }),
   },
 
+  '/api/v1/candidate/saved-searches': {
+    get: op({
+      operationId: 'listSavedSearches',
+      tags: ['Candidate Alerts'],
+      summary: 'List saved searches',
+      parameters: [
+        ...pageParams(),
+        { name: 'isActive', in: 'query', schema: { type: 'boolean' } },
+      ],
+      data: obj,
+      errors: ['400', '401', '403'],
+    }),
+    post: op({
+      operationId: 'createSavedSearch',
+      tags: ['Candidate Alerts'],
+      summary: 'Create saved search (instant/daily/weekly alerts)',
+      requestBody: jsonBody({ $ref: '#/components/schemas/SavedSearchCreateRequest' }),
+      data: obj,
+      errors: ['400', '401', '403'],
+    }),
+  },
+  '/api/v1/candidate/saved-searches/alert-settings': {
+    get: op({
+      operationId: 'getAlertSettings',
+      tags: ['Candidate Alerts'],
+      summary: 'Get global job alert preferences',
+      data: obj,
+      errors: ['401', '403'],
+    }),
+    patch: op({
+      operationId: 'updateAlertSettings',
+      tags: ['Candidate Alerts'],
+      summary: 'Update matching/nearby/salary/hot/deadline/government prefs',
+      requestBody: jsonBody({ $ref: '#/components/schemas/AlertSettingsUpdateRequest' }),
+      data: obj,
+      errors: ['400', '401', '403'],
+    }),
+  },
+  '/api/v1/candidate/saved-searches/{id}': {
+    get: op({
+      operationId: 'getSavedSearch',
+      tags: ['Candidate Alerts'],
+      summary: 'Get saved search',
+      parameters: [idParam()],
+      data: obj,
+      errors: ['401', '403', '404'],
+    }),
+    patch: op({
+      operationId: 'updateSavedSearch',
+      tags: ['Candidate Alerts'],
+      summary: 'Update saved search',
+      parameters: [idParam()],
+      requestBody: jsonBody({ $ref: '#/components/schemas/SavedSearchUpdateRequest' }),
+      data: obj,
+      errors: ['400', '401', '403', '404'],
+    }),
+    delete: op({
+      operationId: 'deleteSavedSearch',
+      tags: ['Candidate Alerts'],
+      summary: 'Delete saved search',
+      parameters: [idParam()],
+      data: obj,
+      errors: ['401', '403', '404'],
+    }),
+  },
+
   '/api/v1/candidate/jobs/{jobId}/apply': {
     post: op({
       operationId: 'applyToJob',
       tags: ['Candidate Applications'],
-      summary: 'Apply to a job',
+      summary: 'One-tap apply to a job',
+      description:
+        'Empty body reuses profile resume. Response includes confirmation + APPLICATION_CONFIRMATION notification.',
       parameters: [idParam('jobId')],
       requestBody: jsonBody({ $ref: '#/components/schemas/ApplicationApplyRequest' }),
       data: obj,
       errors: ['400', '401', '403', '404', '409'],
     }),
   },
+  '/api/v1/candidate/profile/resumes': {
+    get: op({
+      operationId: 'listSelectableResumes',
+      tags: ['Candidate Profile'],
+      summary: 'List selectable resumes for apply',
+      data: obj,
+      errors: ['401', '403'],
+    }),
+  },
   '/api/v1/candidate/applications': {
     get: op({
       operationId: 'listCandidateApplications',
       tags: ['Candidate Applications'],
-      summary: 'List own applications',
+      summary: 'List own applications (history)',
       parameters: [
         ...pageParams(),
         { name: 'status', in: 'query', schema: { $ref: '#/components/schemas/ApplicationStatus' } },
+        { name: 'jobId', in: 'query', schema: { $ref: '#/components/schemas/ObjectId' } },
       ],
       data: obj,
       errors: ['400', '401', '403'],
@@ -278,7 +393,7 @@ export const candidatePaths: OpenAPIV3.PathsObject = {
     get: op({
       operationId: 'getCandidateApplication',
       tags: ['Candidate Applications'],
-      summary: 'Get own application',
+      summary: 'Get own application (status tracking timestamps included)',
       parameters: [idParam()],
       data: obj,
       errors: ['401', '403', '404'],
@@ -295,6 +410,51 @@ export const candidatePaths: OpenAPIV3.PathsObject = {
     }),
   },
 
+  '/api/v1/candidate/invitations': {
+    get: op({
+      operationId: 'listCandidateInvitations',
+      tags: ['Candidate Invitations'],
+      summary: 'List recruiter invitations',
+      parameters: [
+        ...pageParams(),
+        { name: 'status', in: 'query', schema: { $ref: '#/components/schemas/InvitationStatus' } },
+        { name: 'jobId', in: 'query', schema: { $ref: '#/components/schemas/ObjectId' } },
+      ],
+      data: obj,
+      errors: ['400', '401', '403'],
+    }),
+  },
+  '/api/v1/candidate/invitations/{id}': {
+    get: op({
+      operationId: 'getCandidateInvitation',
+      tags: ['Candidate Invitations'],
+      summary: 'Get invitation detail',
+      parameters: [idParam()],
+      data: obj,
+      errors: ['401', '403', '404'],
+    }),
+  },
+  '/api/v1/candidate/invitations/{id}/accept': {
+    patch: op({
+      operationId: 'acceptInvitation',
+      tags: ['Candidate Invitations'],
+      summary: 'Accept invitation (one-tap apply)',
+      parameters: [idParam()],
+      data: obj,
+      errors: ['400', '401', '403', '404', '409'],
+    }),
+  },
+  '/api/v1/candidate/invitations/{id}/decline': {
+    patch: op({
+      operationId: 'declineInvitation',
+      tags: ['Candidate Invitations'],
+      summary: 'Decline invitation',
+      parameters: [idParam()],
+      data: obj,
+      errors: ['400', '401', '403', '404', '409'],
+    }),
+  },
+
   '/api/v1/candidate/interviews': {
     get: op({
       operationId: 'listCandidateInterviews',
@@ -303,6 +463,12 @@ export const candidatePaths: OpenAPIV3.PathsObject = {
       parameters: [
         ...pageParams(),
         { name: 'status', in: 'query', schema: { $ref: '#/components/schemas/InterviewStatus' } },
+        {
+          name: 'upcoming',
+          in: 'query',
+          schema: { type: 'boolean' },
+          description: 'When true, only active interviews with scheduledAt >= now',
+        },
       ],
       data: obj,
       errors: ['400', '401', '403'],
@@ -322,7 +488,7 @@ export const candidatePaths: OpenAPIV3.PathsObject = {
     patch: op({
       operationId: 'confirmInterview',
       tags: ['Candidate Interviews'],
-      summary: 'Confirm interview',
+      summary: 'Confirm / accept interview',
       parameters: [idParam()],
       data: obj,
       errors: ['400', '401', '403', '404'],
@@ -336,6 +502,68 @@ export const candidatePaths: OpenAPIV3.PathsObject = {
       parameters: [idParam()],
       data: obj,
       errors: ['400', '401', '403', '404'],
+    }),
+  },
+  '/api/v1/candidate/interviews/{id}/reschedule': {
+    patch: op({
+      operationId: 'candidateRescheduleInterview',
+      tags: ['Candidate Interviews'],
+      summary: 'Reschedule interview (candidate proposes new time)',
+      parameters: [idParam()],
+      requestBody: jsonBody({ $ref: '#/components/schemas/InterviewRescheduleRequest' }),
+      data: obj,
+      errors: ['400', '401', '403', '404'],
+    }),
+  },
+  '/api/v1/candidate/ai/matches': {
+    get: op({
+      operationId: 'listAiJobMatches',
+      tags: ['Candidate AI'],
+      summary: 'AI-assisted candidate↔job matching',
+      description:
+        'Ranks public jobs using profile skills, experience, salary, location, and availability (match %). Optional ChatGPT blurbs are labelled AI-generated. Requires OPENAI_API_KEY + ENABLE_AI_MATCHING.',
+      parameters: [
+        {
+          name: 'limit',
+          in: 'query',
+          schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
+        },
+        {
+          name: 'minScore',
+          in: 'query',
+          schema: { type: 'integer', minimum: 0, maximum: 100, default: 40 },
+        },
+        {
+          name: 'withAiInsights',
+          in: 'query',
+          schema: { type: 'boolean', default: true },
+        },
+      ],
+      data: obj,
+      errors: ['401', '403', '404', '429'],
+    }),
+  },
+  '/api/v1/candidate/ai/matches/{jobId}/explain': {
+    get: op({
+      operationId: 'explainAiJobMatch',
+      tags: ['Candidate AI'],
+      summary: 'Explain why a job matches (ChatGPT)',
+      description:
+        'Returns deterministic match breakdown plus an AI explanation. Response always includes aiGenerated labels.',
+      parameters: [idParam('jobId')],
+      data: obj,
+      errors: ['401', '403', '404', '429'],
+    }),
+  },
+  '/api/v1/candidate/ai/career-coach': {
+    get: op({
+      operationId: 'getAiCareerCoach',
+      tags: ['Candidate AI'],
+      summary: 'AI Career Coach pack',
+      description:
+        'Career/job recommendations, salary guidance, and missing-skill suggestions. Always labelled AI-generated. Requires OPENAI_API_KEY + ENABLE_AI_CAREER_COACH.',
+      data: obj,
+      errors: ['401', '403', '404', '429'],
     }),
   },
 };

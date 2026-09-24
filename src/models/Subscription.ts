@@ -7,6 +7,8 @@ const subscriptionLimitsSchema = new Schema(
     activeJobLimit: { type: Number, min: 0, default: 0 },
     featuredJobLimit: { type: Number, min: 0, default: 0 },
     jobListingLifetimeDays: { type: Number, min: 0, max: 3660, default: 0 },
+    contactUnlockLimit: { type: Number, min: 0, default: 0 },
+    freeSearchResultLimit: { type: Number, min: 0, default: 25 },
   },
   { _id: false },
 );
@@ -57,6 +59,10 @@ const subscriptionSchema = new Schema(
       default: 'monthly',
     },
     autoRenew: { type: Boolean, default: false },
+    /** Coupon applied at activation (sheet 348). */
+    couponCode: { type: String, trim: true, uppercase: true, default: '' },
+    originalAmount: { type: Number, min: 0, default: null },
+    discountAmount: { type: Number, min: 0, default: 0 },
     paymentProvider: { type: String, trim: true, default: '' },
     externalSubscriptionId: { type: String, trim: true, default: '' },
     features: {

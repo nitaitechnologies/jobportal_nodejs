@@ -2,6 +2,7 @@ import { createApp } from './app';
 import { connectDatabase, disconnectDatabase } from './config/database';
 import { env } from './config/env';
 import { ensureDefaultSettings } from './services/settings.service';
+import { chatRealtime } from './services/chatRealtime.service';
 import type { Server } from 'http';
 
 let httpServer: Server | null = null;
@@ -60,6 +61,9 @@ async function startServer(): Promise<void> {
   const PORT = process.env.PORT || 5000;
   const HOST = '0.0.0.0';
   httpServer = app.listen(Number(PORT), HOST);
+
+  // Realtime chat (Socket.IO) — shares the same HTTP server.
+  chatRealtime.attach(httpServer);
 
   httpServer.on('listening', () => {
     console.log(

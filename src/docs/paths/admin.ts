@@ -309,6 +309,48 @@ export const adminPaths: OpenAPIV3.PathsObject = {
     }),
   },
 
+  '/api/v1/admin/payments': {
+    get: adminGet(
+      'listAdminPayments',
+      'Admin Payments',
+      'List payments (revenue ledger)',
+      'subscriptions.manage',
+      [
+        ...pageParams(),
+        { name: 'status', in: 'query', schema: { type: 'string' } },
+        { name: 'kind', in: 'query', schema: { type: 'string' } },
+        { name: 'companyId', in: 'query', schema: { type: 'string' } },
+        { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
+        { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
+      ],
+    ),
+  },
+  '/api/v1/admin/payments/revenue': {
+    get: adminGet(
+      'getAdminPaymentRevenue',
+      'Admin Payments',
+      'Revenue / payment summary',
+      'subscriptions.manage',
+      [
+        { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
+        { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
+      ],
+    ),
+  },
+  '/api/v1/admin/payments/{id}/refund': {
+    post: op({
+      operationId: 'adminRefundPayment',
+      tags: ['Admin Subscriptions'],
+      summary: 'Refund a succeeded payment',
+      description:
+        'Full or partial refund. Credit purchases claw back wallet balance when fully refunded.',
+      parameters: [idParam()],
+      requestBody: jsonBody(obj),
+      data: obj,
+      errors: ['400', '401', '403', '404'],
+    }),
+  },
+
   // Analytics
   '/api/v1/admin/analytics/overview': {
     get: adminGet('getAdminAnalyticsOverview', 'Admin Analytics', 'Analytics overview', 'analytics.read', [
@@ -493,13 +535,43 @@ export const adminPaths: OpenAPIV3.PathsObject = {
       parameters: [idParam()],
       requestBody: jsonBody({
         type: 'object',
-        required: ['verificationStatus'],
+        required: ['action'],
         properties: {
-          verificationStatus: { $ref: '#/components/schemas/VerificationStatus' },
+          action: { type: 'string', enum: ['approve', 'reject', 'pending'] },
           note: { type: 'string' },
         },
       }),
       data: obj,
+      errors: ['400', '401', '403', '404', '409'],
+    }),
+  },
+  '/api/v1/admin/companies/{id}/documents/{type}/download': {
+    get: op({
+      operationId: 'downloadAdminCompanyDocument',
+      tags: ['Admin Companies'],
+      summary: 'Download company KYC document',
+      description:
+        'Requires `companies.read`. Returns the private verification document binary (PAN/GST/incorporation/other).',
+      parameters: [
+        idParam(),
+        {
+          name: 'type',
+          in: 'path',
+          required: true,
+          schema: { type: 'string', enum: ['pan', 'gst', 'incorporation', 'other'] },
+        },
+      ],
+      responses: {
+        '200': {
+          description: 'Document binary',
+          content: {
+            'application/pdf': { schema: { type: 'string', format: 'binary' } },
+            'image/jpeg': { schema: { type: 'string', format: 'binary' } },
+            'image/png': { schema: { type: 'string', format: 'binary' } },
+            'image/webp': { schema: { type: 'string', format: 'binary' } },
+          },
+        },
+      },
       errors: ['400', '401', '403', '404'],
     }),
   },
@@ -549,6 +621,22 @@ export const adminPaths: OpenAPIV3.PathsObject = {
       description: 'Requires `jobs.update`.',
       parameters: [idParam()],
       requestBody: jsonBody({ type: 'object', properties: { urgent: { type: 'boolean' } } }),
+      data: obj,
+      errors: ['400', '401', '403', '404'],
+    }),
+  },
+  '/api/v1/admin/jobs/{id}/video-jd': {
+    delete: op({
+      operationId: 'removeAdminJobVideoJd',
+      tags: ['Admin Jobs'],
+      summary: 'Remove job Video JD',
+      description:
+        'Moderation action: clears the Video JD without rejecting the listing. Requires `jobs.reject` or `jobs.update`.',
+      parameters: [idParam()],
+      requestBody: jsonBody({
+        type: 'object',
+        properties: { reason: { type: 'string', maxLength: 500 } },
+      }),
       data: obj,
       errors: ['400', '401', '403', '404'],
     }),

@@ -19,6 +19,7 @@ import {
 } from '../utils/reportStatus';
 import { notifySafely } from './notification.service';
 import { trackSafely } from './analytics.service';
+import { writeAuditSafely } from './audit.service';
 import type {
   AdminReportQuery,
   ReportAdminUpdateInput,
@@ -459,6 +460,20 @@ export class ReportService {
     }
 
     await report.save();
+
+    await writeAuditSafely({
+      admin,
+      action: 'report_investigation_updated',
+      entityType: 'report',
+      entityId: report._id,
+      metadata: {
+        previousStatus,
+        status: report.status,
+        resolution: report.resolution ?? null,
+        targetType: report.targetType,
+        targetId: report.targetId?.toString?.() ?? String(report.targetId),
+      },
+    });
 
     if (
       input.status &&

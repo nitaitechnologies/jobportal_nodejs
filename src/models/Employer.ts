@@ -1,5 +1,5 @@
 import { Schema, model, models, type InferSchemaType, type Model } from 'mongoose';
-import { ACCOUNT_STATUSES } from '../constants/enums';
+import { ACCOUNT_STATUSES, EMPLOYER_TEAM_ROLES } from '../constants/enums';
 
 const employerSchema = new Schema(
   {
@@ -11,6 +11,12 @@ const employerSchema = new Schema(
     companyId: {
       type: Schema.Types.ObjectId,
       ref: 'Company',
+    },
+    /** Company-scoped role (sheet 161). Registering employer becomes owner. */
+    teamRole: {
+      type: String,
+      enum: EMPLOYER_TEAM_ROLES,
+      default: 'owner',
     },
     designation: { type: String, trim: true, default: '', maxlength: 120 },
     department: { type: String, trim: true, default: '', maxlength: 120 },

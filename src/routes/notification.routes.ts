@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { notificationController } from '../controllers/notification.controller';
+import { deviceTokenController } from '../controllers/deviceToken.controller';
 import { requireActiveAccount } from '../middlewares/accountStatus.middleware';
 import { authenticate } from '../middlewares/auth.middleware';
 import { requireRole } from '../middlewares/role.middleware';
@@ -11,11 +12,19 @@ import {
 /**
  * Shared in-app notification routes for candidate + employer users.
  * Ownership always derived from JWT userId → Notification.recipientId.
- * There is no public create endpoint.
+ * Device token endpoints power central push (sheet 472).
  */
 const notificationRouter = Router();
 
 notificationRouter.use(authenticate, requireRole('candidate', 'employer'), requireActiveAccount);
+
+notificationRouter.post('/device-token', (req, res, next) => {
+  void deviceTokenController.register(req, res, next);
+});
+
+notificationRouter.delete('/device-token', (req, res, next) => {
+  void deviceTokenController.unregister(req, res, next);
+});
 
 notificationRouter.get('/', validateNotificationQuery, (req, res, next) => {
   void notificationController.list(req, res, next);

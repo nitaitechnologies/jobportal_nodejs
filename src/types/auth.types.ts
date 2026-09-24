@@ -6,6 +6,8 @@ export interface AccessTokenPayload {
   role: UserRole;
   /** Present for admin tokens only. */
   adminUserId?: string;
+  /** Auth session id (sheet 163–164). */
+  jti?: string;
 }
 
 /** Identity attached after JWT verification. */
@@ -13,6 +15,7 @@ export interface AuthenticatedIdentity {
   userId: string;
   role: UserRole;
   adminUserId?: string;
+  sessionId?: string;
 }
 
 /** Admin context attached after authorization checks. */
@@ -46,5 +49,11 @@ export interface AuthenticatedEmployer {
   email: string;
   phone: string;
   role: 'employer';
+  /** Company-scoped team role (owner | hr | recruiter). */
+  teamRole: import('../constants/enums').EmployerTeamRole;
+  permissions: string[];
   status: string;
+  sessionId?: string;
+  phoneVerified: boolean;
+  emailVerified: boolean;
 }

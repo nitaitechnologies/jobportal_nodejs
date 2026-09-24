@@ -14,6 +14,20 @@ const socialLinksSchema = z.object({
   website: optionalUrl.optional(),
 });
 
+/** Public media path (`/api/v1/media/public/:id`) or absolute http(s) URL. */
+function isGalleryMediaUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (/^\/api\/v1\/media\/public\/[a-fA-F0-9]{24}$/.test(trimmed)) {
+    return true;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
 export const employerProfileUpdateSchema = z
   .object({
     name: z.string().trim().min(2).max(120).optional(),
@@ -69,6 +83,28 @@ export const companyProfileUpdateSchema = z
     socialLinks: socialLinksSchema.optional(),
     logo: z.string().trim().max(500).optional(),
     coverImage: z.string().trim().max(500).optional(),
+    benefits: z
+      .array(z.string().trim().min(1).max(120))
+      .max(30)
+      .transform((items) => Array.from(new Set(items.map((i) => i.trim()).filter(Boolean))))
+      .optional(),
+    gallery: z
+      .array(
+        z.object({
+          url: z
+            .string()
+            .trim()
+            .max(500)
+            .refine((value) => isGalleryMediaUrl(value), {
+              message: 'gallery url must be https or a public media path',
+            }),
+          type: z.enum(['image', 'video']).optional().default('image'),
+          caption: z.string().trim().max(200).optional().default(''),
+          sortOrder: z.number().int().min(0).max(100).optional(),
+        }),
+      )
+      .max(20)
+      .optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -79,6 +115,46 @@ export const companyProfileUpdateSchema = z
 
 export type EmployerProfileUpdateInput = z.infer<typeof employerProfileUpdateSchema>;
 export type CompanyProfileUpdateInput = z.infer<typeof companyProfileUpdateSchema>;
+
+export const companyReviewCreateSchema = z
+  .object({
+    rating: z.number().int().min(1).max(5),
+    title: z.string().trim().max(120).optional().default(''),
+    body: z.string().trim().min(10).max(5000),
+  })
+  .strict();
+
+export const companyReviewUpdateSchema = z
+  .object({
+    rating: z.number().int().min(1).max(5).optional(),
+    title: z.string().trim().max(120).optional(),
+    body: z.string().trim().min(10).max(5000).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (Object.keys(value).length === 0) {
+      ctx.addIssue({ code: 'custom', message: 'At least one field is required' });
+    }
+  });
+
+export const companyReviewsQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).optional().default(1),
+    limit: z.coerce.number().int().min(1).max(50).optional().default(10),
+  })
+  .strict();
+
+export const companyJobsQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).optional().default(1),
+    limit: z.coerce.number().int().min(1).max(50).optional().default(20),
+  })
+  .strict();
+
+export type CompanyReviewCreateInput = z.infer<typeof companyReviewCreateSchema>;
+export type CompanyReviewUpdateInput = z.infer<typeof companyReviewUpdateSchema>;
+export type CompanyReviewsQuery = z.infer<typeof companyReviewsQuerySchema>;
+export type CompanyJobsQuery = z.infer<typeof companyJobsQuerySchema>;
 
 export const EMPLOYER_PROFILE_FORBIDDEN_FIELDS = [
   'email',
@@ -106,6 +182,8 @@ export const COMPANY_PROFILE_FORBIDDEN_FIELDS = [
   'userId',
   'companyId',
   'employerId',
+  'ratingAvg',
+  'ratingCount',
   '_id',
   'id',
   'createdAt',

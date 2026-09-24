@@ -7,6 +7,7 @@ import { sendSuccess } from '../utils/apiResponse';
 import type {
   AdminPlanQuery,
   AdminSubscriptionCreateInput,
+  EmployerAutoRenewUpdateInput,
   EmployerSubscriptionQuery,
   PublicPlanQuery,
   SubscriptionPlanCreateInput,
@@ -131,6 +132,22 @@ export class SubscriptionController {
       const id = typeof req.params.id === 'string' ? req.params.id : '';
       const data = await subscriptionService.getById(requireEmployer(req), id);
       sendSuccess(res, data, 'Subscription fetched successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateAutoRenew(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await subscriptionService.updateAutoRenew(
+        requireEmployer(req),
+        req.body as EmployerAutoRenewUpdateInput,
+      );
+      sendSuccess(
+        res,
+        data,
+        data.subscription.autoRenew ? 'Auto-renew enabled' : 'Auto-renew disabled',
+      );
     } catch (error) {
       next(error);
     }

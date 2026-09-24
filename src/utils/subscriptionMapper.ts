@@ -30,6 +30,9 @@ export interface SubscriptionLike {
   currency?: string | null;
   billingCycle?: string | null;
   autoRenew?: boolean | null;
+  couponCode?: string | null;
+  originalAmount?: number | null;
+  discountAmount?: number | null;
   features?: Record<string, unknown> | null;
   limits?: Record<string, unknown> | null;
   createdAt?: Date;
@@ -74,6 +77,10 @@ export function mapEmployerSubscription(subscription: SubscriptionLike) {
     currency: subscription.currency ?? 'INR',
     billingCycle: subscription.billingCycle ?? 'monthly',
     autoRenew: Boolean(subscription.autoRenew),
+    couponCode: subscription.couponCode?.trim() || null,
+    originalAmount:
+      typeof subscription.originalAmount === 'number' ? subscription.originalAmount : null,
+    discountAmount: subscription.discountAmount ?? 0,
     features: subscription.features ?? {},
     limits: subscription.limits ?? {},
     createdAt: subscription.createdAt ?? null,

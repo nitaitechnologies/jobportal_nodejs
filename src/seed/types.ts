@@ -97,6 +97,7 @@ export interface SeedSummary {
   reports: number;
   plans: number;
   subscriptions: number;
+  coupons: number;
   analyticsEvents: number;
   mediaFiles: number;
 }

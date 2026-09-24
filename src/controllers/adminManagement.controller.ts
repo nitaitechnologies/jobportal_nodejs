@@ -250,6 +250,38 @@ export class AdminManagementController {
     }
   }
 
+  async updateCompanyFeatured(req: Request, res: Response, next: NextFunction) {
+    try {
+      const featured = Boolean((req.body as { featured?: boolean }).featured);
+      const data = await adminCompanyService.updateFeatured(
+        requireAdmin(req),
+        idParam(req),
+        featured,
+      );
+      sendSuccess(res, data, 'Company featured flag updated successfully');
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  async downloadCompanyDocument(req: Request, res: Response, next: NextFunction) {
+    try {
+      const docType = String(req.params.type) as
+        | 'pan'
+        | 'gst'
+        | 'incorporation'
+        | 'other';
+      const { media, buffer } = await adminCompanyService.downloadDocument(idParam(req), docType);
+      const safeName = (media.originalName || `${docType}-document`).replace(/"/g, '');
+      res.setHeader('Content-Type', media.mimeType);
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+      res.setHeader('Content-Length', String(buffer.length));
+      res.status(HTTP_STATUS.OK).send(buffer);
+    } catch (e) {
+      next(e);
+    }
+  }
+
   // Jobs
   async listJobs(req: Request, res: Response, next: NextFunction) {
     try {
@@ -307,6 +339,23 @@ export class AdminManagementController {
         urgent,
       );
       sendSuccess(res, data, 'Job urgent flag updated successfully');
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  async removeJobVideoJd(req: Request, res: Response, next: NextFunction) {
+    try {
+      const reason =
+        typeof (req.body as { reason?: unknown })?.reason === 'string'
+          ? (req.body as { reason: string }).reason
+          : undefined;
+      const data = await adminJobModerationService.removeVideoJd(
+        requireAdmin(req),
+        idParam(req),
+        reason,
+      );
+      sendSuccess(res, data, 'Video JD removed successfully');
     } catch (e) {
       next(e);
     }

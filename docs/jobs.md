@@ -27,6 +27,13 @@ Auth: JWT + role `employer` + active employer/company.
 | `PATCH` | `/api/v1/employer/jobs/:id/pause` | Pause published job |
 | `PATCH` | `/api/v1/employer/jobs/:id/resume` | Resume paused job |
 | `PATCH` | `/api/v1/employer/jobs/:id/close` | Close published/paused job |
+| `PATCH` | `/api/v1/employer/jobs/:id/renew` | Renew expired job (uses one post credit) |
+| `PATCH` | `/api/v1/employer/jobs/:id/extend` | Extend listing window (`{ days?: 1-90 }`) |
+| `PATCH` | `/api/v1/employer/jobs/:id/expire` | Expire a live job early |
+| `PATCH` | `/api/v1/employer/jobs/:id/republish` | Resume paused, or renew expired |
+| `PATCH` | `/api/v1/employer/jobs/:id/feature` | Toggle featured (`{ featured }`, plan-gated) |
+| `PATCH` | `/api/v1/employer/jobs/:id/urgent` | Toggle urgent hiring (`{ urgent }`) |
+| `POST` | `/api/v1/employer/jobs/:id/duplicate` | Clone into a new draft |
 
 ### Create / update fields
 
@@ -37,26 +44,39 @@ Allowed (whitelisted):
 - `workMode`, `employmentType`
 - `experience` `{ min, max? }`, `salary` `{ min?, max?, period? }`
 - `openings`, `education`, `genderPreference`, `benefits`
-- `deadline`, `applicationMethod`
+- `shift`, `workingDays`, `workingHours`, `incentives`, `interviewProcess`
+- `deadline`, `applicationMethod`, `urgent`
 
 Forbidden (rejected if present):
 
 - `employerId`, `companyId`, `status`, `slug`
 - `views`, `applicationsCount`, `publishedAt`, `expiresAt`
-- `featured`, `urgent`, `deletedAt`, timestamps
+- `featured`, `deletedAt`, timestamps
+
+`expiresAt` is set server-side on publish/renew from the application deadline and plan listing window (employers set `deadline`, not expiry directly).
 
 ### Lifecycle
 
 ```text
 draft ──publish──► published ──pause──► paused
                       │                   │
-                      └──── close ────────┘──► closed
+                      ├──── expire ───────┘──► expired ──renew/republish──► published
+                      └──── close ────────────► closed
 ```
 
-- New jobs start as `draft`.
-- B11 has no admin moderation gate yet: `publish` moves `draft`/`pending` → `published` and sets `publishedAt` / `expiresAt` from `deadline`.
-- Employers cannot set `rejected` or `expired`.
-- Soft delete sets `deletedAt` (and closes live jobs) so future applications/saved jobs stay intact.
+- New jobs start as `draft` (or via `POST …/duplicate`).
+- `publish` moves `draft`/`pending` → `published` and sets `publishedAt` / `expiresAt` from `deadline` + plan listing window.
+- `extend` pushes `expiresAt` (and deadline) forward without consuming a renew credit.
+- `expire` / worker soft-expiry set status `expired`; `renew` / `republish` bring them back (renew uses one post credit).
+- `featured` / `urgent` are toggled via dedicated endpoints (not create/update body).
+- Soft delete sets `deletedAt` (and closes live jobs) so applications/saved jobs stay intact.
+
+### Expiry reminders
+
+Run `npm run worker:job-expiry-reminders` on a schedule (e.g. daily). The worker:
+
+1. Soft-expires published/paused jobs past `expiresAt`
+2. Sends `JOB_EXPIRY_REMINDER` notifications for listings ending within 3 days
 
 ### Publish requirements
 

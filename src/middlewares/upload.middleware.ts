@@ -14,6 +14,16 @@ const memory = multer({
   },
 });
 
+/** Chat attachments allow up to 10 MB (see MEDIA_MAX_BYTES.chat_attachment). */
+const chatMemory = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    files: 1,
+    fields: 5,
+    fileSize: MEDIA_MAX_BYTES.chat_attachment,
+  },
+});
+
 function mapMulterError(error: unknown): AppError {
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
@@ -48,6 +58,26 @@ function mapMulterError(error: unknown): AppError {
 export function uploadSingle(fieldName = 'file') {
   return (req: Request, res: Response, next: NextFunction): void => {
     memory.single(fieldName)(req, res, (error: unknown) => {
+      if (error) {
+        next(mapMulterError(error));
+        return;
+      }
+      if (!req.file) {
+        next(
+          new AppError('File is required', HTTP_STATUS.BAD_REQUEST, [
+            { path: 'file', message: 'Multipart field "file" is required' },
+          ]),
+        );
+        return;
+      }
+      next();
+    });
+  };
+}
+
+export function uploadChatAttachment(fieldName = 'file') {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    chatMemory.single(fieldName)(req, res, (error: unknown) => {
       if (error) {
         next(mapMulterError(error));
         return;

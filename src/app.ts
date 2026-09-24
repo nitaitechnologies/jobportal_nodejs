@@ -61,6 +61,12 @@ export function createApp(): Application {
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb', parameterLimit: 100 }));
 
+  // API responses must not be indexed by search engines (sheet 456).
+  app.use((_req, res, next) => {
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    next();
+  });
+
   // OpenAPI / Swagger UI — outside /api/v1 (not behind maintenanceGate).
   app.use('/api/docs', createDocsRouter());
 

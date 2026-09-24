@@ -4,9 +4,12 @@ import { NOTIFICATION_TYPES, type NotificationType } from '../constants/enums';
 import { Candidate } from '../models/Candidate';
 import { Employer } from '../models/Employer';
 import { Notification } from '../models/Notification';
+import { User } from '../models/User';
 import { AppError } from '../utils/AppError';
 import { mapNotification } from '../utils/notificationMapper';
 import type { NotificationQuery } from '../validators/notification.validator';
+import { sendEmail } from './email.service';
+import { sendPushToUser } from './push.service';
 
 const SENSITIVE_DATA_KEYS = new Set([
   'password',
@@ -25,6 +28,8 @@ export interface CreateNotificationInput {
   title: string;
   message: string;
   data?: Record<string, unknown>;
+  /** Skip email/push fan-out (default false). */
+  inAppOnly?: boolean;
 }
 
 function assertNotificationType(type: string): asserts type is NotificationType {
@@ -67,6 +72,7 @@ function sanitizeData(data?: Record<string, unknown>): Record<string, unknown> {
 /**
  * Internal factory used by domain services.
  * Throws on invalid input — callers that must not fail should use `notifySafely`.
+ * Also fans out to push + email channels (sheets 472–473) unless `inAppOnly`.
  */
 export async function createNotification(input: CreateNotificationInput) {
   assertNotificationType(input.type);
@@ -88,7 +94,61 @@ export async function createNotification(input: CreateNotificationInput) {
     readAt: undefined,
   });
 
+  if (!input.inAppOnly) {
+    void fanOutChannels({
+      recipientId: recipientId.toString(),
+      type: input.type,
+      title,
+      message,
+      data: sanitizeData(input.data),
+    }).catch((error) => {
+      const reason = error instanceof Error ? error.message : 'unknown';
+      console.error(`[notifications] channel fan-out failed: ${reason}`);
+    });
+  }
+
   return mapNotification(notification);
+}
+
+async function fanOutChannels(input: {
+  recipientId: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  data: Record<string, unknown>;
+}) {
+  const dataStrings: Record<string, string> = { type: input.type };
+  for (const [k, v] of Object.entries(input.data)) {
+    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+      dataStrings[k] = String(v);
+    }
+  }
+
+  await sendPushToUser({
+    userId: input.recipientId,
+    title: input.title,
+    body: input.message,
+    data: dataStrings,
+  });
+
+  const user = await User.findById(input.recipientId).select('email name');
+  const email = user?.email?.trim();
+  if (email) {
+    await sendEmail({
+      to: email,
+      subject: input.title,
+      text: input.message,
+      html: `<p>${escapeHtml(input.message)}</p>`,
+    });
+  }
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 /**

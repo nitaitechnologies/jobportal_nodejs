@@ -241,7 +241,16 @@ export async function seedJobs(ctx: SeedContext): Promise<void> {
           salaryMax,
           salaryPeriod: 'monthly',
           openings: intBetween(rng, 1, 5),
-          education: pick(rng, ['Any Graduate', 'B.Tech / B.E.', 'MBA', 'B.Com', '']),
+          education: pick(rng, [
+            'Any Graduate',
+            'B.Tech / B.E.',
+            'MBA',
+            'B.Com',
+            '10th Pass',
+            '12th Pass',
+            'Graduate',
+            '',
+          ]),
           genderPreference: 'any',
           benefits: pickN(rng, BENEFITS_POOL, intBetween(rng, 2, 5)),
           applicationDeadline:

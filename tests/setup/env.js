@@ -33,3 +33,8 @@ process.env.TRUST_PROXY = '0';
 process.env.AUTH_RATE_LIMIT_WINDOW_MS = String(15 * 60 * 1000);
 process.env.AUTH_RATE_LIMIT_MAX = '10000';
 process.env.ENABLE_API_DOCS = 'true';
+// Keep AI features off in automated tests (local .env may contain a real key).
+process.env.ENABLE_AI_RESUME = 'false';
+process.env.ENABLE_AI_MATCHING = 'false';
+process.env.ENABLE_AI_CAREER_COACH = 'false';
+process.env.OPENAI_API_KEY = '';

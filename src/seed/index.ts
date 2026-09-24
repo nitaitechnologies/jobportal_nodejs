@@ -36,7 +36,7 @@ import { seedNotifications } from './seeders/notifications.seeder';
 import { seedReports } from './seeders/reports.seeder';
 import { seedSavedJobs } from './seeders/savedJobs.seeder';
 import { seedSettings } from './seeders/settings.seeder';
-import { seedSubscriptionPlans, seedSubscriptions } from './seeders/subscriptions.seeder';
+import { seedSubscriptionPlans, seedSubscriptions, seedCoupons } from './seeders/subscriptions.seeder';
 import type { SeedSummary } from './types';
 import { SeedValidationError, printIntegrityReport, validateSeed } from './validate';
 
@@ -83,6 +83,7 @@ function printSummary(summary: SeedSummary, integrityOk: boolean, elapsedMs: num
   console.log(`Reports: ${summary.reports}`);
   console.log(`Plans: ${summary.plans}`);
   console.log(`Subscriptions: ${summary.subscriptions}`);
+  console.log(`Coupons: ${summary.coupons}`);
   console.log(`Analytics Events: ${summary.analyticsEvents}`);
   console.log(`Media: ${summary.mediaFiles}`);
   console.log(`Saved Jobs: ${summary.savedJobs}`);
@@ -151,6 +152,7 @@ async function runSeed(): Promise<void> {
   await runDomain('Media', () => seedMediaAssets(ctx));
   await runDomain('Reports', () => seedReports(ctx));
   await runDomain('Plans', () => seedSubscriptionPlans(ctx));
+  await runDomain('Coupons', () => seedCoupons(ctx));
   await runDomain('Subscriptions', () => seedSubscriptions(ctx));
   await runDomain('Settings', () => seedSettings(ctx));
   await runDomain('Analytics', () => seedAnalytics(ctx));

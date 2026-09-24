@@ -8,6 +8,7 @@ import { Category } from '../models/Category';
 import { Company } from '../models/Company';
 import { Job } from '../models/Job';
 import { Location } from '../models/Location';
+import { MediaFile } from '../models/MediaFile';
 import { User } from '../models/User';
 import type { AuthenticatedCandidate, AuthenticatedEmployer } from '../types/auth.types';
 import { scoreJobMatch } from '../utils/matchScore';
@@ -29,12 +30,50 @@ import {
   resolveEmployerUserId,
 } from './notification.service';
 import { trackSafely } from './analytics.service';
+import { candidateSafetyService } from './candidateSafety.service';
 import type {
   ApplicationApplyInput,
+  ApplicationBulkMessageInput,
+  ApplicationBulkStatusInput,
+  ApplicationInternalRatingInput,
+  ApplicationNotesUpdateInput,
   ApplicationStatusUpdateInput,
   CandidateApplicationQuery,
+  EmployerApplicationExportQuery,
   EmployerApplicationQuery,
+  EmployerApplicationStatsQuery,
 } from '../validators/application.validator';
+import { Employer } from '../models/Employer';
+import { chatService } from './chat.service';
+
+async function resolveEmployerActorName(employer: AuthenticatedEmployer): Promise<string> {
+  const [user, profile] = await Promise.all([
+    User.findById(employer.userId).select('name'),
+    Employer.findById(employer.employerId).select('designation'),
+  ]);
+  return user?.name?.trim() || profile?.designation?.trim() || 'Hiring team';
+}
+
+function pushStatusHistory(
+  application: {
+    statusHistory: { push: (doc: unknown) => unknown; length: number; splice: (start: number, deleteCount?: number) => unknown };
+  },
+  from: ApplicationStatus,
+  to: ApplicationStatus,
+  actor: { userId: string; name: string; auto?: boolean },
+) {
+  application.statusHistory.push({
+    from,
+    to,
+    at: new Date(),
+    byUserId: new mongoose.Types.ObjectId(actor.userId),
+    byName: actor.name,
+    auto: Boolean(actor.auto),
+  });
+  if (application.statusHistory.length > 50) {
+    application.statusHistory.splice(0, application.statusHistory.length - 50);
+  }
+}
 
 function isDuplicateKeyError(error: unknown): boolean {
   return (
@@ -123,6 +162,8 @@ async function loadJobPublicExtras(job: {
             industry: company.industry ?? '',
             companySize: company.companySize ?? null,
             headquarters: company.headquarters ?? '',
+            verificationStatus: company.verificationStatus,
+            verified: company.verificationStatus === 'verified',
           }
         : null,
       location: job.location
@@ -181,7 +222,6 @@ async function resolveApplyResume(
     if (!mongoose.Types.ObjectId.isValid(mediaId)) {
       throw new AppError('Invalid resume reference', HTTP_STATUS.BAD_REQUEST);
     }
-    const { MediaFile } = await import('../models/MediaFile.js');
     const media = await MediaFile.findById(mediaId).select(
       'ownerUserId category visibility status',
     );
@@ -214,7 +254,6 @@ async function resolveApplyVideoResume(
   candidateVideoResume: string | null | undefined,
   inputVideoResume?: string,
 ): Promise<string> {
-  const { env } = await import('../config/env.js');
   if (!env.enableVideoResume) return '';
 
   const fallback = candidateVideoResume?.trim() ?? '';
@@ -226,7 +265,6 @@ async function resolveApplyVideoResume(
     if (!mongoose.Types.ObjectId.isValid(mediaId)) {
       throw new AppError('Invalid video resume reference', HTTP_STATUS.BAD_REQUEST);
     }
-    const { MediaFile } = await import('../models/MediaFile.js');
     const media = await MediaFile.findById(mediaId).select(
       'ownerUserId category visibility status',
     );
@@ -352,6 +390,14 @@ export class ApplicationService {
       );
     }
 
+    const employer = await Employer.findById(job.employerId).select('userId');
+    if (employer?.userId) {
+      await candidateSafetyService.assertCandidateNotBlockingEmployerUser(
+        candidate.userId,
+        employer.userId.toString(),
+      );
+    }
+
     const candidateDoc = await Candidate.findById(candidate.candidateId);
     if (!candidateDoc) {
       throw new AppError('Candidate access denied', HTTP_STATUS.FORBIDDEN);
@@ -368,6 +414,127 @@ export class ApplicationService {
       input.videoResume,
     );
 
+    // Re-apply after withdraw: unique {candidateId,jobId} means we reactivate the row.
+    const existing = await Application.findOne({
+      candidateId: candidate.candidateId,
+      jobId: job._id,
+    });
+
+    const screeningQuestions = (job.screeningQuestions ?? []) as Array<{
+      id: string;
+      text: string;
+      required?: boolean;
+      type?: string;
+    }>;
+    const answerByQuestion = new Map(
+      (input.answers ?? []).map((item) => [
+        item.question.trim().toLowerCase(),
+        item.answer?.trim() ?? '',
+      ]),
+    );
+    const normalizedAnswers = screeningQuestions.map((q) => {
+      const answer =
+        answerByQuestion.get(q.text.trim().toLowerCase()) ??
+        (input.answers ?? []).find((a) => a.question === q.id)?.answer?.trim() ??
+        '';
+      return { question: q.text, answer };
+    });
+    for (const item of input.answers ?? []) {
+      const key = item.question.trim().toLowerCase();
+      if (!screeningQuestions.some((q) => q.text.trim().toLowerCase() === key)) {
+        normalizedAnswers.push({
+          question: item.question.trim(),
+          answer: item.answer?.trim() ?? '',
+        });
+      }
+    }
+
+    const missingRequired = screeningQuestions.filter((q) => {
+      if (!q.required) return false;
+      const found = normalizedAnswers.find(
+        (a) => a.question.trim().toLowerCase() === q.text.trim().toLowerCase(),
+      );
+      return !found?.answer;
+    });
+    if (missingRequired.length > 0) {
+      throw new AppError(
+        'Please answer all required screening questions',
+        HTTP_STATUS.BAD_REQUEST,
+        missingRequired.map((q) => ({
+          path: 'answers',
+          message: `Required: ${q.text}`,
+        })),
+      );
+    }
+
+    const matchPreview = scoreJobMatch(
+      {
+        title: job.title,
+        skills: job.skills,
+        requirements: job.requirements,
+        experienceMin: job.experienceMin,
+        experienceMax: job.experienceMax,
+        salaryMin: job.salaryMin,
+        salaryMax: job.salaryMax,
+        workMode: job.workMode,
+        locationText: [job.location?.address, job.location?.city, job.location?.displayName]
+          .filter(Boolean)
+          .join(' '),
+        latitude: typeof job.location?.latitude === 'number' ? job.location.latitude : null,
+        longitude: typeof job.location?.longitude === 'number' ? job.location.longitude : null,
+      },
+      {
+        headline: candidateDoc.headline,
+        currentJobTitle: candidateDoc.currentJobTitle,
+        skills: candidateDoc.skills,
+        totalExperience: candidateDoc.totalExperience,
+        expectedSalary: candidateDoc.expectedSalary,
+        currentLocation: candidateDoc.currentLocation,
+        latitude: candidateDoc.latitude,
+        longitude: candidateDoc.longitude,
+        openToWork: candidateDoc.openToWork,
+        availableFrom: candidateDoc.availableFrom,
+        noticePeriod: candidateDoc.noticePeriod,
+      },
+    );
+
+    const autoFilter = job.screeningAutoFilter as
+      | { enabled?: boolean; minMatchScore?: number }
+      | undefined;
+    const autoReject =
+      Boolean(autoFilter?.enabled) &&
+      matchPreview.overall < (autoFilter?.minMatchScore ?? 40);
+
+    if (existing) {
+      if (existing.status !== 'withdrawn') {
+        throw new AppError('You have already applied to this job', HTTP_STATUS.CONFLICT);
+      }
+
+      existing.resume = resume;
+      existing.videoResume = videoResume;
+      existing.coverLetter = input.coverLetter ?? '';
+      existing.answers = normalizedAnswers as typeof existing.answers;
+      existing.status = autoReject ? 'rejected' : 'applied';
+      existing.appliedAt = new Date();
+      existing.notes = autoReject
+        ? `Auto-filtered: match ${Math.round(matchPreview.overall)}% below threshold.`
+        : '';
+      existing.source = 'platform';
+      existing.set('viewedAt', undefined);
+      existing.set('shortlistedAt', undefined);
+      existing.set('interviewAt', undefined);
+      existing.set('rejectedAt', autoReject ? new Date() : undefined);
+      existing.set('hiredAt', undefined);
+      await existing.save();
+
+      await Job.updateOne({ _id: job._id }, { $inc: { applicationsCount: 1 } });
+      return this.finalizeApplySuccess(candidate, job, existing, {
+        reactivated: true,
+        autoFiltered: autoReject,
+        matchPercentage: Math.round(matchPreview.overall),
+      });
+    }
+
     try {
       const application = await Application.create({
         candidateId: new mongoose.Types.ObjectId(candidate.candidateId),
@@ -377,53 +544,147 @@ export class ApplicationService {
         resume,
         videoResume,
         coverLetter: input.coverLetter ?? '',
-        answers: input.answers ?? [],
-        status: 'applied',
+        answers: normalizedAnswers,
+        status: autoReject ? 'rejected' : 'applied',
         appliedAt: new Date(),
+        rejectedAt: autoReject ? new Date() : undefined,
+        notes: autoReject
+          ? `Auto-filtered: match ${Math.round(matchPreview.overall)}% below threshold.`
+          : '',
         source: 'platform',
       });
 
       await Job.updateOne({ _id: job._id }, { $inc: { applicationsCount: 1 } });
-
-      await trackSafely({
-        eventType: 'application_submitted',
-        userId: candidate.userId,
-        actorRole: 'candidate',
-        entityType: 'application',
-        entityId: application._id,
-        jobId: job._id,
-        companyId: job.companyId,
-        employerId: job.employerId,
-        candidateId: candidate.candidateId,
-        categoryId: job.categoryId,
-        locationId: job.location?.locationId,
+      return this.finalizeApplySuccess(candidate, job, application, {
+        autoFiltered: autoReject,
+        matchPercentage: Math.round(matchPreview.overall),
       });
-
-      const employerUserId = await resolveEmployerUserId(job.employerId);
-      if (employerUserId) {
-        await notifySafely({
-          recipientId: employerUserId,
-          type: 'APPLICATION_SUBMITTED',
-          title: 'New Application Received',
-          message: `A candidate has applied to your job "${job.title}".`,
-          data: {
-            applicationId: application._id.toString(),
-            jobId: job._id.toString(),
-            candidateId: candidate.candidateId,
-          },
-        });
-      }
-
-      const extras = await loadJobPublicExtras(job);
-      return {
-        application: mapCandidateApplication(application, extras),
-      };
     } catch (error) {
       if (isDuplicateKeyError(error)) {
         throw new AppError('You have already applied to this job', HTTP_STATUS.CONFLICT);
       }
       throw error;
     }
+  }
+
+  private async finalizeApplySuccess(
+    candidate: AuthenticatedCandidate,
+    job: {
+      _id: mongoose.Types.ObjectId;
+      title: string;
+      companyId: mongoose.Types.ObjectId;
+      employerId: mongoose.Types.ObjectId;
+      categoryId?: mongoose.Types.ObjectId | null;
+      location?: { locationId?: mongoose.Types.ObjectId | null } | null;
+      description?: string;
+      slug: string;
+      skills?: string[] | null;
+      workMode: string;
+      employmentType: string;
+      experienceMin?: number | null;
+      experienceMax?: number | null;
+      salaryMin?: number | null;
+      salaryMax?: number | null;
+      salaryPeriod?: string | null;
+      openings?: number | null;
+      featured?: boolean | null;
+      urgent?: boolean | null;
+      publishedAt?: Date | null;
+      applicationDeadline?: Date | null;
+    },
+    application: {
+      _id: mongoose.Types.ObjectId;
+      resume?: string | null;
+      videoResume?: string | null;
+      coverLetter?: string | null;
+      answers?: Array<{ question: string; answer?: string }>;
+      status?: string;
+      appliedAt?: Date | null;
+      viewedAt?: Date | null;
+      shortlistedAt?: Date | null;
+      rejectedAt?: Date | null;
+      hiredAt?: Date | null;
+      createdAt?: Date;
+      updatedAt?: Date;
+      jobId: mongoose.Types.ObjectId;
+      candidateId: mongoose.Types.ObjectId;
+      employerId: mongoose.Types.ObjectId;
+      companyId: mongoose.Types.ObjectId;
+    },
+    metadata?: Record<string, unknown>,
+  ) {
+    await trackSafely({
+      eventType: 'application_submitted',
+      userId: candidate.userId,
+      actorRole: 'candidate',
+      entityType: 'application',
+      entityId: application._id,
+      jobId: job._id,
+      companyId: job.companyId,
+      employerId: job.employerId,
+      candidateId: candidate.candidateId,
+      categoryId: job.categoryId,
+      locationId: job.location?.locationId,
+      ...(metadata ? { metadata } : {}),
+    });
+
+    const employerUserId = await resolveEmployerUserId(job.employerId);
+    if (employerUserId) {
+      await notifySafely({
+        recipientId: employerUserId,
+        type: 'APPLICATION_SUBMITTED',
+        title: 'New Application Received',
+        message: `A candidate has applied to your job "${job.title}".`,
+        data: {
+          applicationId: application._id.toString(),
+          jobId: job._id.toString(),
+          candidateId: candidate.candidateId,
+        },
+      });
+
+      // 309 — high-fit new applicant also surfaces as matching candidate.
+      const matchPct =
+        typeof metadata?.matchPercentage === 'number' ? metadata.matchPercentage : null;
+      if (matchPct !== null && matchPct >= 70) {
+        await notifySafely({
+          recipientId: employerUserId,
+          type: 'MATCHING_CANDIDATE',
+          title: 'New matching candidate',
+          message: `A ${matchPct}% match applied to "${job.title}".`,
+          data: {
+            applicationId: application._id.toString(),
+            jobId: job._id.toString(),
+            candidateId: candidate.candidateId,
+            matchPercentage: matchPct,
+          },
+        });
+      }
+    }
+
+    await notifySafely({
+      recipientId: candidate.userId,
+      type: 'APPLICATION_CONFIRMATION',
+      title: 'Application Submitted',
+      message: `Your application for "${job.title}" was submitted successfully.`,
+      data: {
+        applicationId: application._id.toString(),
+        jobId: job._id.toString(),
+        status: 'applied',
+      },
+    });
+
+    const extras = await loadJobPublicExtras(job);
+    const mapped = mapCandidateApplication(application, extras);
+    return {
+      application: mapped,
+      confirmation: {
+        message: 'Application submitted successfully',
+        applicationId: application._id.toString(),
+        jobId: job._id.toString(),
+        status: 'applied',
+        appliedAt: mapped.appliedAt,
+      },
+    };
   }
 
   async listCandidate(candidate: AuthenticatedCandidate, query: CandidateApplicationQuery) {
@@ -558,6 +819,50 @@ export class ApplicationService {
       filter.jobId = ownedJob._id;
     }
 
+    const q = query.q?.trim();
+    if (q) {
+      const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const rx = new RegExp(escaped, 'i');
+      const [users, candidates, jobs] = await Promise.all([
+        User.find({ role: 'candidate', name: rx }).select('_id').limit(200),
+        Candidate.find({
+          $or: [{ headline: rx }, { currentJobTitle: rx }, { skills: rx }, { currentLocation: rx }],
+        })
+          .select('_id userId')
+          .limit(200),
+        Job.find({
+          employerId: employer.employerId,
+          companyId: employer.companyId,
+          deletedAt: null,
+          title: rx,
+        })
+          .select('_id')
+          .limit(100),
+      ]);
+      const userIds = new Set(users.map((u) => u._id.toString()));
+      const candidateIds = new Set<string>();
+      for (const c of candidates) {
+        candidateIds.add(c._id.toString());
+      }
+      if (userIds.size > 0) {
+        const byUser = await Candidate.find({ userId: { $in: [...userIds] } })
+          .select('_id')
+          .limit(200);
+        for (const c of byUser) candidateIds.add(c._id.toString());
+      }
+      const orClauses: Record<string, unknown>[] = [];
+      if (candidateIds.size > 0) {
+        orClauses.push({
+          candidateId: { $in: [...candidateIds].map((id) => new mongoose.Types.ObjectId(id)) },
+        });
+      }
+      if (jobs.length > 0) {
+        orClauses.push({ jobId: { $in: jobs.map((j) => j._id) } });
+      }
+      orClauses.push({ notes: rx }, { coverLetter: rx });
+      filter.$or = orClauses;
+    }
+
     const skip = (query.page - 1) * query.limit;
     const [items, total] = await Promise.all([
       Application.find(filter).sort({ appliedAt: -1, createdAt: -1 }).skip(skip).limit(query.limit),
@@ -601,6 +906,62 @@ export class ApplicationService {
     };
   }
 
+  async getEmployerStats(employer: AuthenticatedEmployer, query: EmployerApplicationStatsQuery = {}) {
+    const match: Record<string, unknown> = {
+      employerId: new mongoose.Types.ObjectId(employer.employerId),
+      companyId: new mongoose.Types.ObjectId(employer.companyId),
+    };
+
+    if (query.jobId) {
+      const ownedJob = await Job.findOne({
+        _id: query.jobId,
+        employerId: employer.employerId,
+        companyId: employer.companyId,
+        deletedAt: null,
+      }).select('_id');
+      if (!ownedJob) {
+        throw new AppError('Job not found', HTTP_STATUS.NOT_FOUND);
+      }
+      match.jobId = ownedJob._id;
+    }
+
+    const rows = await Application.aggregate<{ _id: string; count: number }>([
+      { $match: match },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]);
+
+    const byStatus: Record<string, number> = {
+      applied: 0,
+      viewed: 0,
+      shortlisted: 0,
+      interview: 0,
+      rejected: 0,
+      hired: 0,
+      withdrawn: 0,
+    };
+    let total = 0;
+    for (const row of rows) {
+      byStatus[row._id] = row.count;
+      total += row.count;
+    }
+
+    return {
+      total,
+      byStatus,
+      /** UI-friendly aliases used by employer applicants page. */
+      counts: {
+        all: total,
+        new: byStatus.applied,
+        reviewing: byStatus.viewed,
+        shortlisted: byStatus.shortlisted,
+        interview: byStatus.interview,
+        selected: byStatus.hired,
+        rejected: byStatus.rejected,
+        withdrawn: byStatus.withdrawn,
+      },
+    };
+  }
+
   async getEmployerById(employer: AuthenticatedEmployer, id: string) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       throw new AppError('Application not found', HTTP_STATUS.NOT_FOUND);
@@ -613,6 +974,93 @@ export class ApplicationService {
     });
     if (!application) {
       throw new AppError('Application not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    // First open by employer → mark viewed + notify candidate (atomic to avoid double notify).
+    if (application.status === 'applied') {
+      const actorName = await resolveEmployerActorName(employer);
+      const claimed = await Application.findOneAndUpdate(
+        {
+          _id: application._id,
+          employerId: employer.employerId,
+          companyId: employer.companyId,
+          status: 'applied',
+        },
+        {
+          $set: { status: 'viewed', viewedAt: new Date() },
+          $push: {
+            statusHistory: {
+              $each: [
+                {
+                  from: 'applied',
+                  to: 'viewed',
+                  at: new Date(),
+                  byUserId: new mongoose.Types.ObjectId(employer.userId),
+                  byName: actorName,
+                  auto: true,
+                },
+              ],
+              $slice: -50,
+            },
+          },
+        },
+        { new: true },
+      );
+
+      if (claimed) {
+        application.status = claimed.status;
+        application.viewedAt = claimed.viewedAt;
+        application.statusHistory = claimed.statusHistory;
+
+        await trackSafely({
+          eventType: 'application_status_changed',
+          userId: employer.userId,
+          actorRole: 'employer',
+          entityType: 'application',
+          entityId: application._id,
+          jobId: application.jobId,
+          companyId: application.companyId,
+          employerId: application.employerId,
+          candidateId: application.candidateId,
+          metadata: { from: 'applied', to: 'viewed', auto: true },
+        });
+
+        const candidateUserId = await resolveCandidateUserId(application.candidateId);
+        if (candidateUserId) {
+          const jobTitle = (
+            await Job.findById(application.jobId).select('title')
+          )?.title;
+          await notifySafely({
+            recipientId: candidateUserId,
+            type: 'RECRUITER_VIEWED_PROFILE',
+            title: 'Recruiter Viewed Your Profile',
+            message: jobTitle
+              ? `A recruiter viewed your profile for "${jobTitle}".`
+              : 'A recruiter viewed your application profile.',
+            data: {
+              applicationId: application._id.toString(),
+              jobId: application.jobId.toString(),
+              employerId: employer.employerId,
+              candidateId: application.candidateId.toString(),
+              status: 'viewed',
+            },
+          });
+        }
+      } else {
+        // Another request already transitioned — reload current state.
+        const fresh = await Application.findById(application._id);
+        if (fresh) {
+          application.status = fresh.status;
+          application.viewedAt = fresh.viewedAt;
+          application.shortlistedAt = fresh.shortlistedAt;
+          application.interviewAt = fresh.interviewAt;
+          application.rejectedAt = fresh.rejectedAt;
+          application.hiredAt = fresh.hiredAt;
+          application.statusHistory = fresh.statusHistory;
+          application.internalNotes = fresh.internalNotes;
+          application.notes = fresh.notes;
+        }
+      }
     }
 
     const job = await Job.findById(application.jobId).select(
@@ -666,11 +1114,16 @@ export class ApplicationService {
       );
     }
 
+    const actorName = await resolveEmployerActorName(employer);
     application.status = to;
     const stamp = employerTimestampField(to);
     if (stamp) {
       application[stamp] = new Date();
     }
+    pushStatusHistory(application as never, from, to, {
+      userId: employer.userId,
+      name: actorName,
+    });
     await application.save();
 
     await trackSafely({
@@ -704,6 +1157,342 @@ export class ApplicationService {
       });
     }
 
+    // 305 — Employer feed when a candidate is shortlisted.
+    if (to === 'shortlisted') {
+      const employerUserId = await resolveEmployerUserId(application.employerId);
+      if (employerUserId) {
+        const [job, candidateDoc] = await Promise.all([
+          Job.findById(application.jobId).select('title'),
+          Candidate.findById(application.candidateId).select('userId'),
+        ]);
+        const candidateUser = candidateDoc
+          ? await User.findById(candidateDoc.userId).select('name')
+          : null;
+        const name = candidateUser?.name?.trim() || 'A candidate';
+        await notifySafely({
+          recipientId: employerUserId,
+          type: 'APPLICATION_SHORTLISTED',
+          title: 'Candidate shortlisted',
+          message: job
+            ? `${name} was shortlisted for "${job.title}".`
+            : `${name} was shortlisted.`,
+          data: {
+            applicationId: application._id.toString(),
+            jobId: application.jobId.toString(),
+            candidateId: application.candidateId.toString(),
+            status: to,
+          },
+        });
+      }
+    }
+
+    return this.getEmployerById(employer, id);
+  }
+
+  async bulkUpdateStatus(
+    employer: AuthenticatedEmployer,
+    input: ApplicationBulkStatusInput,
+  ) {
+    const results: Array<{
+      id: string;
+      ok: boolean;
+      error?: string;
+      status?: string;
+    }> = [];
+
+    for (const id of input.ids) {
+      try {
+        const data = await this.updateStatus(employer, id, { status: input.status });
+        results.push({
+          id,
+          ok: true,
+          status: data.application.status as string,
+        });
+      } catch (error) {
+        results.push({
+          id,
+          ok: false,
+          error: error instanceof AppError ? error.message : 'Update failed',
+        });
+      }
+    }
+
+    const updated = results.filter((r) => r.ok).length;
+    return {
+      requested: input.ids.length,
+      updated,
+      failed: input.ids.length - updated,
+      status: input.status,
+      results,
+    };
+  }
+
+  /** Bulk message selected applicants via chat (sheet 268). */
+  async bulkMessage(employer: AuthenticatedEmployer, input: ApplicationBulkMessageInput) {
+    const actor = {
+      userId: employer.userId,
+      role: 'employer' as const,
+      employerId: employer.employerId,
+      companyId: employer.companyId,
+    };
+    const results: Array<{ id: string; ok: boolean; error?: string; conversationId?: string }> =
+      [];
+
+    for (const id of input.ids) {
+      try {
+        const application = await Application.findOne({
+          _id: id,
+          employerId: employer.employerId,
+          companyId: employer.companyId,
+        }).select('status');
+        if (!application) {
+          results.push({ id, ok: false, error: 'Application not found' });
+          continue;
+        }
+        // Ensure chat-eligible: auto-view applied apps first
+        if (application.status === 'applied') {
+          await this.getEmployerById(employer, id);
+        }
+        const opened = await chatService.openOrGetForApplication(actor, id);
+        const conversationId = opened.id as string;
+        await chatService.sendMessage(actor, conversationId, {
+          body: input.body,
+          type: 'text',
+        });
+        results.push({ id, ok: true, conversationId });
+      } catch (error) {
+        results.push({
+          id,
+          ok: false,
+          error: error instanceof AppError ? error.message : 'Message failed',
+        });
+      }
+    }
+
+    const sent = results.filter((r) => r.ok).length;
+    return {
+      requested: input.ids.length,
+      sent,
+      failed: input.ids.length - sent,
+      results,
+    };
+  }
+
+  /** CSV export of applicants (sheet 271). */
+  async exportEmployerCsv(
+    employer: AuthenticatedEmployer,
+    query: EmployerApplicationExportQuery = {},
+  ) {
+    const list = await this.listEmployer(
+      employer,
+      {
+        page: 1,
+        limit: 100,
+        status: query.status,
+        jobId: query.jobId,
+        q: query.q,
+      },
+    );
+
+    // Fetch up to 500 by paging if needed
+    const rows = [...list.applications];
+    let page = 2;
+    while (rows.length < list.pagination.total && page <= 5) {
+      const next = await this.listEmployer(employer, {
+        page,
+        limit: 100,
+        status: query.status,
+        jobId: query.jobId,
+        q: query.q,
+      });
+      rows.push(...next.applications);
+      if (next.applications.length === 0) break;
+      page += 1;
+    }
+
+    const escape = (value: unknown) => {
+      const raw = value == null ? '' : String(value);
+      if (/[",\n]/.test(raw)) return `"${raw.replace(/"/g, '""')}"`;
+      return raw;
+    };
+
+    const header = [
+      'applicationId',
+      'candidateName',
+      'email',
+      'phone',
+      'jobTitle',
+      'status',
+      'matchPercent',
+      'experienceYears',
+      'location',
+      'skills',
+      'appliedAt',
+      'answers',
+    ];
+    const lines = [header.join(',')];
+    for (const app of rows) {
+      const candidate = app.candidate as Record<string, unknown> | null;
+      const job = app.job as Record<string, unknown> | null;
+      const match = app.match as { overall?: number } | null;
+      const answers = Array.isArray(app.answers)
+        ? (app.answers as Array<{ question?: string; answer?: string }>)
+            .map((a) => `${a.question ?? ''}: ${a.answer ?? ''}`)
+            .join(' | ')
+        : '';
+      lines.push(
+        [
+          app.id,
+          candidate?.name,
+          candidate?.email,
+          candidate?.phone,
+          job?.title,
+          app.status,
+          match?.overall != null ? Math.round(match.overall) : '',
+          candidate?.totalExperience,
+          candidate?.currentLocation,
+          Array.isArray(candidate?.skills) ? (candidate?.skills as string[]).join('; ') : '',
+          app.appliedAt,
+          answers,
+        ]
+          .map(escape)
+          .join(','),
+      );
+    }
+
+    return {
+      filename: `applicants-${new Date().toISOString().slice(0, 10)}.csv`,
+      contentType: 'text/csv; charset=utf-8',
+      csv: `${lines.join('\n')}\n`,
+      total: rows.length,
+    };
+  }
+
+  async addNote(
+    employer: AuthenticatedEmployer,
+    id: string,
+    input: ApplicationNotesUpdateInput,
+  ) {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new AppError('Application not found', HTTP_STATUS.NOT_FOUND);
+    }
+    const application = await Application.findOne({
+      _id: id,
+      employerId: employer.employerId,
+      companyId: employer.companyId,
+    });
+    if (!application) {
+      throw new AppError('Application not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const actorName = await resolveEmployerActorName(employer);
+    application.internalNotes.push({
+      text: input.text,
+      authorUserId: new mongoose.Types.ObjectId(employer.userId),
+      authorName: actorName,
+      createdAt: new Date(),
+    } as never);
+    application.notes = input.text;
+    await application.save();
+    return this.getEmployerById(employer, id);
+  }
+
+  async setInternalRating(
+    employer: AuthenticatedEmployer,
+    id: string,
+    input: ApplicationInternalRatingInput,
+  ) {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new AppError('Application not found', HTTP_STATUS.NOT_FOUND);
+    }
+    const application = await Application.findOne({
+      _id: id,
+      employerId: employer.employerId,
+      companyId: employer.companyId,
+    });
+    if (!application) {
+      throw new AppError('Application not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    application.internalRating = input.rating;
+    await application.save();
+    return this.getEmployerById(employer, id);
+  }
+
+  async updateNote(
+    employer: AuthenticatedEmployer,
+    id: string,
+    noteId: string,
+    input: ApplicationNotesUpdateInput,
+  ) {
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(noteId)) {
+      throw new AppError('Application not found', HTTP_STATUS.NOT_FOUND);
+    }
+    const application = await Application.findOne({
+      _id: id,
+      employerId: employer.employerId,
+      companyId: employer.companyId,
+    });
+    if (!application) {
+      throw new AppError('Application not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const note = application.internalNotes.id(noteId);
+    if (!note) {
+      // Legacy single-string note: replace notes field when noteId is sentinel
+      if (noteId === '000000000000000000000000' || application.internalNotes.length === 0) {
+        application.notes = input.text;
+        application.internalNotes.push({
+          text: input.text,
+          authorUserId: new mongoose.Types.ObjectId(employer.userId),
+          authorName: await resolveEmployerActorName(employer),
+          createdAt: new Date(),
+        } as never);
+        await application.save();
+        return this.getEmployerById(employer, id);
+      }
+      throw new AppError('Note not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    note.text = input.text;
+    note.updatedAt = new Date();
+    application.notes = input.text;
+    await application.save();
+    return this.getEmployerById(employer, id);
+  }
+
+  async deleteNote(employer: AuthenticatedEmployer, id: string, noteId: string) {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new AppError('Application not found', HTTP_STATUS.NOT_FOUND);
+    }
+    const application = await Application.findOne({
+      _id: id,
+      employerId: employer.employerId,
+      companyId: employer.companyId,
+    });
+    if (!application) {
+      throw new AppError('Application not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    if (mongoose.Types.ObjectId.isValid(noteId)) {
+      const note = application.internalNotes.id(noteId);
+      if (note) {
+        note.deleteOne();
+      } else if (application.internalNotes.length === 0 && application.notes) {
+        application.notes = '';
+      } else {
+        throw new AppError('Note not found', HTTP_STATUS.NOT_FOUND);
+      }
+    } else if (noteId === 'server-note') {
+      application.notes = '';
+      application.internalNotes.splice(0);
+    } else {
+      throw new AppError('Note not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const latest = application.internalNotes[application.internalNotes.length - 1];
+    application.notes = latest?.text ?? '';
+    await application.save();
     return this.getEmployerById(employer, id);
   }
 }

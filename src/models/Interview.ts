@@ -45,6 +45,8 @@ const interviewSchema = new Schema(
     location: { type: String, trim: true, default: '' },
     meetingLink: { type: String, trim: true, default: '' },
     interviewer: { type: String, trim: true, default: '' },
+    /** Phone dial-in number when type is phone (or optional contact on other types). */
+    phoneContact: { type: String, trim: true, default: '' },
     notes: { type: String, trim: true, default: '', maxlength: 5000 },
     status: {
       type: String,
@@ -52,6 +54,21 @@ const interviewSchema = new Schema(
       default: 'scheduled',
     },
     cancellationReason: { type: String, trim: true, default: '' },
+    /** Employer feedback after completing the interview (292). */
+    feedback: {
+      rating: { type: Number, min: 1, max: 5, default: null },
+      outcome: {
+        type: String,
+        enum: ['hire', 'reject', 'hold', 'next_round', ''],
+        default: '',
+      },
+      notes: { type: String, trim: true, default: '', maxlength: 5000 },
+      submittedAt: { type: Date, default: null },
+    },
+    /** Set when 24h reminder notification was sent (idempotent worker). */
+    reminder24hSentAt: { type: Date, default: null },
+    /** Set when 1h reminder notification was sent (idempotent worker). */
+    reminder1hSentAt: { type: Date, default: null },
   },
   {
     timestamps: true,

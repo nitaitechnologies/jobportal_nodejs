@@ -18,6 +18,8 @@ const limitsSchema = z
     featuredJobLimit: z.number().int().min(0).max(10_000).optional(),
     /** 0 = no forced listing lifetime (deadline only). Free plans typically use 10. */
     jobListingLifetimeDays: z.number().int().min(0).max(3660).optional(),
+    contactUnlockLimit: z.number().int().min(0).max(100_000).optional(),
+    freeSearchResultLimit: z.number().int().min(0).max(10_000).optional(),
   })
   .strict();
 
@@ -25,6 +27,7 @@ const featuresSchema = z
   .object({
     featuredJobs: z.boolean().optional(),
     candidateContact: z.boolean().optional(),
+    advancedCandidateSearch: z.boolean().optional(),
   })
   .strict();
 
@@ -97,6 +100,21 @@ export const adminSubscriptionCreateSchema = z
     companyId: objectIdSchema,
     planId: objectIdSchema,
     autoRenew: z.boolean().optional().default(false),
+    couponCode: z
+      .string()
+      .trim()
+      .min(3)
+      .max(40)
+      .regex(/^[A-Za-z0-9_-]+$/, 'Invalid coupon code format')
+      .transform((value) => value.toUpperCase())
+      .optional(),
+  })
+  .strict();
+
+/** Employer toggle for auto-renew (sheet 347). */
+export const employerAutoRenewUpdateSchema = z
+  .object({
+    autoRenew: z.boolean(),
   })
   .strict();
 
@@ -137,6 +155,9 @@ export const SUBSCRIPTION_ADMIN_FORBIDDEN_FIELDS = [
   'features',
   'limits',
   'plan',
+  'couponCode',
+  'originalAmount',
+  'discountAmount',
   'paymentProvider',
   'externalSubscriptionId',
   'createdAt',
@@ -150,4 +171,5 @@ export type SubscriptionPlanUpdateInput = z.infer<typeof subscriptionPlanUpdateS
 export type PublicPlanQuery = z.infer<typeof publicPlanQuerySchema>;
 export type AdminPlanQuery = z.infer<typeof adminPlanQuerySchema>;
 export type AdminSubscriptionCreateInput = z.infer<typeof adminSubscriptionCreateSchema>;
+export type EmployerAutoRenewUpdateInput = z.infer<typeof employerAutoRenewUpdateSchema>;
 export type EmployerSubscriptionQuery = z.infer<typeof employerSubscriptionQuerySchema>;

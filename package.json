@@ -14,7 +14,17 @@
     "create-dev-admin": "ts-node scripts/create-dev-admin.ts",
     "seed": "SEED_MODE=demo ts-node src/seed/index.ts",
     "seed:reset": "SEED_MODE=demo SEED_COMMAND=reset SEED_ALLOW_RESET=1 ts-node src/seed/index.ts",
-    "seed:verify": "SEED_MODE=demo ts-node src/seed/verify.ts"
+    "seed:verify": "SEED_MODE=demo ts-node src/seed/verify.ts",
+    "worker:alerts": "ts-node scripts/run-job-alerts.ts",
+    "worker:interview-reminders": "ts-node scripts/run-interview-reminders.ts",
+    "worker:job-expiry-reminders": "ts-node scripts/run-job-expiry-reminders.ts",
+    "worker:recontact-reminders": "ts-node scripts/run-recontact-reminders.ts",
+    "worker:employer-digests": "ts-node scripts/run-employer-digests.ts",
+    "worker:subscription-renewals": "ts-node scripts/run-subscription-renewals.ts",
+    "backup:db": "ts-node scripts/run-db-backup.ts",
+    "verify:notifications": "ts-node scripts/verify-b27-notifications.ts",
+    "verify:ai-payments": "ts-node scripts/verify-b28-ai-payments.ts",
+    "verify:backup-restore": "ts-node scripts/verify-b29-backup-restore.ts"
   },
   "keywords": [
     "workindia",
@@ -38,6 +48,9 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.9.5",
     "multer": "^2.3.0",
+    "nodemailer": "^10.0.10",
+    "sharp": "^0.35.4",
+    "socket.io": "^4.8.3",
     "swagger-ui-express": "^5.0.1",
     "zod": "^4.5.4"
   },
@@ -50,6 +63,9 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.2.0",
     "@types/node": "^26.5.0",
+    "@types/nodemailer": "^8.0.2",
+    "@types/sharp": "^0.31.1",
+    "@types/socket.io": "^3.0.1",
     "@types/supertest": "^7.2.1",
     "@types/swagger-ui-express": "^4.1.8",
     "jest": "^30.5.1",

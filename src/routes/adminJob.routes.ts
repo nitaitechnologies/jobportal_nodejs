@@ -60,4 +60,13 @@ router.patch(
   },
 );
 
+router.delete(
+  '/:id/video-jd',
+  requireAnyPermission(PERMISSIONS.JOBS_REJECT, PERMISSIONS.JOBS_UPDATE),
+  validateAdminIdParam,
+  (req, res, next) => {
+    void adminManagementController.removeJobVideoJd(req, res, next);
+  },
+);
+
 export default router;

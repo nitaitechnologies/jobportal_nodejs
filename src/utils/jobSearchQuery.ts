@@ -111,12 +111,12 @@ export function resolvePublicSort(
       return { publishedAt: -1 };
     case 'relevance':
       if (hasKeyword) {
-        return { score: { $meta: 'textScore' }, publishedAt: -1 };
+        return { score: { $meta: 'textScore' }, featured: -1, urgent: -1, publishedAt: -1 };
       }
-      return { publishedAt: -1, createdAt: -1 };
+      return { featured: -1, urgent: -1, publishedAt: -1, createdAt: -1 };
     case 'latest':
     default:
-      return { publishedAt: -1, createdAt: -1 };
+      return { featured: -1, urgent: -1, publishedAt: -1, createdAt: -1 };
   }
 }
 
@@ -130,6 +130,144 @@ export function buildPublicVisibilityFilter(
     companyId: { $in: companyIds },
     $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
   };
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const EDUCATION_PATTERNS: Record<string, string[]> = {
+  '10th': ['10th', 'tenth', 'class\\s*10', 'matriculate'],
+  '12th': ['12th', 'twelfth', 'intermediate', 'class\\s*12', 'hsc', 'higher\\s*secondary'],
+  graduate: ['graduate', 'graduation', 'bachelor', 'b\\.?tech', 'bsc', 'bcom', 'ba\\b', 'bba'],
+  postgraduate: ['post\\s*grad', 'postgraduate', 'master', 'mba', 'm\\.?tech', 'msc', 'pg\\b'],
+};
+
+export function buildEducationFilter(levels?: string[]): JobSearchFilter | null {
+  if (!levels?.length) return null;
+  const patterns: string[] = [];
+  for (const level of levels) {
+    const key = level.trim().toLowerCase();
+    const aliases = EDUCATION_PATTERNS[key] ?? [escapeRegex(key)];
+    patterns.push(...aliases);
+  }
+  if (!patterns.length) return null;
+  return {
+    education: { $regex: patterns.join('|'), $options: 'i' },
+  };
+}
+
+/** Sheet 149–156 Fresher Mode presets for GET /jobs. */
+export const FRESHER_MODES = [
+  'fresher',
+  'internship',
+  'no-experience',
+  'training',
+  'entry-level',
+  'graduate',
+  '10th',
+  '12th',
+] as const;
+export type FresherMode = (typeof FRESHER_MODES)[number];
+
+const TRAINING_JOB_PATTERN =
+  'train(ee|ing|ership)|apprentice|upskill|skill\\s*develop|on[-\\s]?the[-\\s]?job\\s*train';
+
+/**
+ * Training / trainee / apprenticeship openings (title or description).
+ * Advisory discovery — never returns 404 on empty.
+ */
+export function buildTrainingJobsFilter(): JobSearchFilter {
+  return {
+    $or: [
+      { title: { $regex: TRAINING_JOB_PATTERN, $options: 'i' } },
+      { description: { $regex: TRAINING_JOB_PATTERN, $options: 'i' } },
+      { requirements: { $regex: TRAINING_JOB_PATTERN, $options: 'i' } },
+    ],
+  };
+}
+
+export type FresherModeResolved = {
+  experienceMin?: number;
+  experienceMax?: number;
+  employmentType?: string;
+  education?: string[];
+  extraFilter?: JobSearchFilter | null;
+};
+
+/**
+ * Resolve fresherMode into search fragments.
+ * Explicit query params (experience*, employmentType, education) win when already set.
+ */
+export function resolveFresherMode(
+  mode: FresherMode | undefined,
+  current: {
+    experienceMin?: number;
+    experienceMax?: number;
+    employmentType?: string;
+    education?: string[];
+  },
+): FresherModeResolved {
+  if (!mode) return {};
+
+  switch (mode) {
+    case 'fresher':
+    case 'entry-level':
+      return {
+        experienceMax:
+          current.experienceMax !== undefined ? current.experienceMax : 1,
+        experienceMin: current.experienceMin,
+      };
+    case 'no-experience':
+      return {
+        experienceMax:
+          current.experienceMax !== undefined ? current.experienceMax : 0,
+        experienceMin: current.experienceMin,
+      };
+    case 'internship':
+      return {
+        employmentType: current.employmentType ?? 'internship',
+      };
+    case 'training':
+      return { extraFilter: buildTrainingJobsFilter() };
+    case 'graduate':
+      return {
+        education: current.education?.length ? current.education : ['graduate'],
+      };
+    case '10th':
+      return {
+        education: current.education?.length ? current.education : ['10th'],
+      };
+    case '12th':
+      return {
+        education: current.education?.length ? current.education : ['12th'],
+      };
+    default:
+      return {};
+  }
+}
+
+export function buildSkillsFilter(skills?: string[]): JobSearchFilter | null {
+  if (!skills?.length) return null;
+  return {
+    $or: skills.map((skill) => ({
+      skills: { $regex: escapeRegex(skill.trim()), $options: 'i' },
+    })),
+  };
+}
+
+export function buildPostedWithinFilter(
+  postedWithinDays?: number,
+  now = new Date(),
+): JobSearchFilter | null {
+  if (!postedWithinDays || postedWithinDays < 1) return null;
+  const cutoff = new Date(now.getTime() - postedWithinDays * 24 * 60 * 60 * 1000);
+  return { publishedAt: { $gte: cutoff } };
+}
+
+export function buildWorkingDaysFilter(days?: string[]): JobSearchFilter | null {
+  if (!days?.length) return null;
+  return { workingDays: { $in: days } };
 }
 
 /**

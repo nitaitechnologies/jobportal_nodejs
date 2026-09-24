@@ -128,6 +128,97 @@ export class JobController {
     }
   }
 
+  async extend(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const id = typeof req.params.id === 'string' ? req.params.id : '';
+      const days = (req.body as { days?: number })?.days;
+      const data = await jobService.extend(requireEmployerContext(req), id, days);
+      sendSuccess(res, data, 'Job listing extended successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async expire(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const id = typeof req.params.id === 'string' ? req.params.id : '';
+      const data = await jobService.expire(requireEmployerContext(req), id);
+      sendSuccess(res, data, 'Job expired successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async republish(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const id = typeof req.params.id === 'string' ? req.params.id : '';
+      const data = await jobService.republish(requireEmployerContext(req), id);
+      sendSuccess(res, data, 'Job republished successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async setFeatured(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const id = typeof req.params.id === 'string' ? req.params.id : '';
+      const featured = Boolean((req.body as { featured: boolean }).featured);
+      const data = await jobService.setFeatured(
+        requireEmployerContext(req),
+        id,
+        featured,
+      );
+      sendSuccess(res, data, featured ? 'Job featured successfully' : 'Featured flag removed');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async setUrgent(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const id = typeof req.params.id === 'string' ? req.params.id : '';
+      const urgent = Boolean((req.body as { urgent: boolean }).urgent);
+      const data = await jobService.setUrgent(requireEmployerContext(req), id, urgent);
+      sendSuccess(res, data, urgent ? 'Job marked urgent' : 'Urgent flag removed');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async notifyBoostMatches(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const id = typeof req.params.id === 'string' ? req.params.id : '';
+      const body = (req.body ?? {}) as { minScore?: number; limit?: number };
+      const data = await jobService.notifyBoostMatches(requireEmployerContext(req), id, {
+        minScore: body.minScore,
+        limit: body.limit,
+      });
+      sendSuccess(res, data, `Boost notify sent to ${data.sent} matching candidate(s)`);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getBoostStats(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const id = typeof req.params.id === 'string' ? req.params.id : '';
+      const data = await jobService.getBoostStats(requireEmployerContext(req), id);
+      sendSuccess(res, data, 'Boost performance fetched successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async duplicate(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const id = typeof req.params.id === 'string' ? req.params.id : '';
+      const data = await jobService.duplicate(requireEmployerContext(req), id);
+      sendSuccess(res, data, 'Job duplicated as draft', HTTP_STATUS.CREATED);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async listPublic(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const query = (req as RequestWithValidatedQuery).validatedQuery as PublicJobQuery;
@@ -141,7 +232,13 @@ export class JobController {
   async getPublicBySlug(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const slug = typeof req.params.slug === 'string' ? req.params.slug : '';
-      const data = await jobService.getPublicBySlug(slug);
+      const latRaw = Number(req.query.lat);
+      const lngRaw = Number(req.query.lng);
+      const geo =
+        Number.isFinite(latRaw) && Number.isFinite(lngRaw)
+          ? { lat: latRaw, lng: lngRaw }
+          : undefined;
+      const data = await jobService.getPublicBySlug(slug, geo);
       sendSuccess(res, data, 'Job fetched successfully');
     } catch (error) {
       next(error);

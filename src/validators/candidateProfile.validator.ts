@@ -1,8 +1,12 @@
 import { z } from 'zod';
 import {
+  CANDIDATE_JOB_TYPES,
   EMPLOYMENT_STATUSES,
   GENDERS,
   PROFILE_VISIBILITY,
+  SHIFT_PREFERENCES,
+  WORK_MODES,
+  WORKING_DAY_PREFERENCES,
 } from '../constants/enums';
 import { isValidPhone, normalizePhone } from '../utils/phone';
 
@@ -132,6 +136,12 @@ const skillsArraySchema = z
     return unique;
   });
 
+const stringList = (maxItems: number, maxLen: number) =>
+  z
+    .array(z.string().trim().min(1).max(maxLen))
+    .max(maxItems)
+    .transform((items) => Array.from(new Set(items.map((item) => item.trim()).filter(Boolean))));
+
 export const candidateProfileUpdateSchema = z
   .object({
     name: z.string().trim().min(2).max(120).optional(),
@@ -151,18 +161,27 @@ export const candidateProfileUpdateSchema = z
     gender: z.enum(GENDERS).optional(),
     currentLocation: z.string().trim().max(200).optional(),
     locationPlaceId: z.string().trim().min(3).max(300).optional(),
-    preferredLocations: z
-      .array(z.string().trim().min(1).max(120))
-      .max(20)
-      .transform((items) => Array.from(new Set(items.map((item) => item.trim()).filter(Boolean))))
-      .optional(),
+    preferredLocations: stringList(20, 120).optional(),
+    preferredRoles: stringList(20, 120).optional(),
+    preferredCategories: stringList(20, 120).optional(),
+    preferredJobTypes: z.array(z.enum(CANDIDATE_JOB_TYPES)).max(10).optional(),
+    preferredWorkModes: z.array(z.enum(WORK_MODES)).max(5).optional(),
+    preferredWorkingDays: z.array(z.enum(WORKING_DAY_PREFERENCES)).max(5).optional(),
+    preferredShifts: z.array(z.enum(SHIFT_PREFERENCES)).max(5).optional(),
     currentJobTitle: z.string().trim().max(120).optional(),
     currentCompany: z.string().trim().max(200).optional(),
     totalExperience: z.number().min(0).max(60).optional(),
+    currentSalary: z.number().min(0).max(100_000_000).optional().nullable(),
     expectedSalary: z.number().min(0).max(100_000_000).optional().nullable(),
     noticePeriod: z.number().int().min(0).max(365).optional(),
     availableFrom: z.coerce.date().optional().nullable(),
+    openToWork: z.boolean().optional(),
     employmentStatus: z.enum(EMPLOYMENT_STATUSES).optional(),
+    /**
+     * Fresher option (sheet 149).
+     * `true` clears work history and sets totalExperience to 0.
+     */
+    isFresher: z.boolean().optional(),
     skills: skillsArraySchema.optional(),
     education: z.array(educationItemSchema).max(20).optional(),
     workExperience: z.array(workExperienceItemSchema).max(30).optional(),
@@ -187,6 +206,8 @@ export const candidateProfileUpdateSchema = z
     portfolio: optionalUrl.optional(),
     socialLinks: socialLinksSchema.optional(),
     profileVisibility: z.enum(PROFILE_VISIBILITY).optional(),
+    allowEmployerContact: z.boolean().optional(),
+    resumeVisibleToEmployers: z.boolean().optional(),
     resume: optionalUrl.optional(),
   })
   .strict()
