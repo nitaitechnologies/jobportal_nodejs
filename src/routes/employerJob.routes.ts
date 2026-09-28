@@ -1,13 +1,19 @@
 import { Router, type Request } from 'express';
 import { HTTP_STATUS } from '../constants';
+import { EMPLOYER_PERMISSIONS } from '../constants/employerPermissions';
+import { employerAssignmentController } from '../controllers/employerAssignment.controller';
 import { jobController } from '../controllers/job.controller';
 import { mediaController } from '../controllers/media.controller';
 import { authenticate } from '../middlewares/auth.middleware';
-import { requireEmployer } from '../middlewares/employerAuth.middleware';
+import {
+  requireEmployer,
+  requireEmployerPermission,
+} from '../middlewares/employerAuth.middleware';
 import { requireVideoJdEnabled } from '../middlewares/featureFlag.middleware';
 import { validateObjectIdParam } from '../middlewares/objectIdParam.middleware';
 import { requireRole } from '../middlewares/role.middleware';
 import { uploadSingle } from '../middlewares/upload.middleware';
+import { validateBody } from '../middlewares/validate.middleware';
 import {
   validateEmployerJobQuery,
   validateJobBoostNotify,
@@ -17,6 +23,7 @@ import {
   validateJobUrgentFlag,
   validateJobUpdate,
 } from '../middlewares/jobValidate.middleware';
+import { assignJobAssigneesSchema } from '../services/employerAssignment.service';
 import { employerAiMatchingService } from '../services/employerAiMatching.service';
 import { AppError } from '../utils/AppError';
 import { sendSuccess } from '../utils/apiResponse';
@@ -146,6 +153,17 @@ employerJobRouter.get('/:id/boost-stats', validateObjectIdParam('id'), (req, res
 employerJobRouter.post('/:id/duplicate', validateObjectIdParam('id'), (req, res, next) => {
   void jobController.duplicate(req, res, next);
 });
+
+/** Assign recruiters to a job (sheet 337). */
+employerJobRouter.patch(
+  '/:id/assignees',
+  requireEmployerPermission(EMPLOYER_PERMISSIONS.JOBS_MANAGE),
+  validateObjectIdParam('id'),
+  validateBody(assignJobAssigneesSchema),
+  (req, res, next) => {
+    void employerAssignmentController.assignJob(req, res, next);
+  },
+);
 
 /**
  * AI Candidate Matching vs this JD (sheet 243–248).

@@ -72,6 +72,7 @@ export interface JobLike {
   applicationsCount?: number | null;
   publishedAt?: Date | null;
   expiresAt?: Date | null;
+  assignedEmployerIds?: Array<Types.ObjectId | { toString(): string }> | null;
   deletedAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
@@ -179,6 +180,7 @@ function mapCoreJob(
     applicationsCount: job.applicationsCount ?? 0,
     publishedAt: job.publishedAt ?? null,
     expiresAt: job.expiresAt ?? null,
+    assignedEmployerIds: (job.assignedEmployerIds ?? []).map((id) => id.toString()),
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
   };

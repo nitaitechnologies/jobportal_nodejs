@@ -12,6 +12,8 @@ declare global {
       admin?: AuthenticatedAdmin;
       candidate?: AuthenticatedCandidate;
       employer?: AuthenticatedEmployer;
+      /** Raw JSON body, set for webhook signature checks. */
+      rawBody?: Buffer;
     }
   }
 }

@@ -168,6 +168,50 @@ export class PaymentController {
     }
   }
 
+  async gatewayCheckout(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const id = typeof req.params.id === 'string' ? req.params.id : '';
+      const token = typeof req.query.token === 'string' ? req.query.token : '';
+      const html = await paymentService.gatewayCheckoutHtml(id, token);
+      res.status(HTTP_STATUS.OK).type('html').send(html);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async gatewayCallback(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const body = req.body as {
+        paymentId?: string;
+        token?: string;
+        razorpayOrderId?: string;
+        razorpayPaymentId?: string;
+        razorpaySignature?: string;
+      };
+      const data = await paymentService.completeGatewayCallback({
+        paymentId: body.paymentId ?? '',
+        token: body.token ?? '',
+        razorpayOrderId: body.razorpayOrderId ?? '',
+        razorpayPaymentId: body.razorpayPaymentId ?? '',
+        razorpaySignature: body.razorpaySignature ?? '',
+      });
+      sendSuccess(res, data, 'Payment confirmed successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async razorpayWebhook(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const signature = req.header('x-razorpay-signature') ?? '';
+      const raw = req.rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
+      const data = await paymentService.handleRazorpayWebhook(raw, signature);
+      sendSuccess(res, data, 'Webhook processed');
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async adminRevenue(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const query = (req as RequestWithValidatedQuery).validatedQuery as PaymentRevenueQuery;

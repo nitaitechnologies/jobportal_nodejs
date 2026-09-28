@@ -45,6 +45,7 @@ import employerCandidateRouter from './employerCandidate.routes';
 import employerInterviewRouter from './employerInterview.routes';
 import employerSubscriptionRouter from './employerSubscription.routes';
 import employerPaymentRouter from './employerPayment.routes';
+import paymentGatewayRouter from './paymentGateway.routes';
 import employerAnalyticsRouter from './employerAnalytics.routes';
 import employerAiRouter from './employerAi.routes';
 import candidateSafetyRouter from './candidateSafety.routes';
@@ -136,6 +137,7 @@ v1Router.use('/notifications', notificationRouter);
 v1Router.use('/career-advice', careerAdviceRouter);
 v1Router.use('/reports', reportRouter);
 v1Router.use('/support/tickets', supportTicketRouter);
+v1Router.use('/payments', paymentGatewayRouter);
 v1Router.use('/subscription-plans', subscriptionPlanRouter);
 
 export default v1Router;

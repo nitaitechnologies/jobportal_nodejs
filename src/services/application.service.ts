@@ -930,6 +930,16 @@ export class ApplicationService {
       { $group: { _id: '$status', count: { $sum: 1 } } },
     ]);
 
+    const sourceRows = await Application.aggregate<{ _id: string; count: number }>([
+      { $match: match },
+      {
+        $group: {
+          _id: { $ifNull: ['$source', 'platform'] },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
     const byStatus: Record<string, number> = {
       applied: 0,
       viewed: 0,
@@ -945,9 +955,16 @@ export class ApplicationService {
       total += row.count;
     }
 
+    const bySource: Record<string, number> = {};
+    for (const row of sourceRows) {
+      const key = (row._id || 'platform').trim() || 'platform';
+      bySource[key] = row.count;
+    }
+
     return {
       total,
       byStatus,
+      bySource,
       /** UI-friendly aliases used by employer applicants page. */
       counts: {
         all: total,

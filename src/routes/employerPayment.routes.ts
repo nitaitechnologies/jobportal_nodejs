@@ -20,7 +20,8 @@ import {
 
 /**
  * Employer payments, wallet, and GST invoices (sheet 351–365).
- * Live gateway (358) is deferred — confirm uses simulated provider.
+ * Razorpay when RAZORPAY_KEY_ID + RAZORPAY_KEY_SECRET are set (358).
+ * Otherwise confirm/fail stay simulated.
  */
 const employerPaymentRouter = Router();
 

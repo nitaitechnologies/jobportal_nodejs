@@ -1,6 +1,6 @@
 # Employer payments, wallet & GST invoices
 
-Sheet items **359–361, 365** (and wallet **351–357**, history **362–364**). **358 Payment gateway** is deferred — checkout uses `paymentProvider: simulated`.
+Sheet items **358–365** (and wallet **351–357**). Checkout uses Razorpay when `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` are set. Without keys, `paymentProvider` stays `simulated`.
 
 ## Flow
 

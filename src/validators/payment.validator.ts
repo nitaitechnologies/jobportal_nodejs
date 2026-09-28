@@ -34,8 +34,11 @@ export const paymentCheckoutSchema = z
 
 export const paymentConfirmSchema = z
   .object({
-    /** Simulated provider reference until real gateway (358). */
+    /** Simulated provider reference, or Razorpay payment id when the gateway is live. */
     externalPaymentId: z.string().trim().max(120).optional().default(''),
+    razorpayOrderId: z.string().trim().max(80).optional().default(''),
+    razorpayPaymentId: z.string().trim().max(80).optional().default(''),
+    razorpaySignature: z.string().trim().max(256).optional().default(''),
   })
   .strict();
 

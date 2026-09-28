@@ -1,10 +1,16 @@
 import { Router } from 'express';
+import { EMPLOYER_PERMISSIONS } from '../constants/employerPermissions';
 import { applicationController } from '../controllers/application.controller';
+import { employerAssignmentController } from '../controllers/employerAssignment.controller';
 import { mediaController } from '../controllers/media.controller';
 import { authenticate } from '../middlewares/auth.middleware';
-import { requireEmployer } from '../middlewares/employerAuth.middleware';
+import {
+  requireEmployer,
+  requireEmployerPermission,
+} from '../middlewares/employerAuth.middleware';
 import { requireVideoResumeEnabled } from '../middlewares/featureFlag.middleware';
 import { requireRole } from '../middlewares/role.middleware';
+import { validateBody } from '../middlewares/validate.middleware';
 import {
   validateApplicationBulkMessage,
   validateApplicationBulkStatus,
@@ -17,6 +23,7 @@ import {
   validateEmployerApplicationQuery,
   validateEmployerApplicationStatsQuery,
 } from '../middlewares/applicationValidate.middleware';
+import { assignApplicationSchema } from '../services/employerAssignment.service';
 
 const employerApplicationRouter = Router();
 
@@ -77,6 +84,17 @@ employerApplicationRouter.patch(
   validateApplicationStatusUpdate,
   (req, res, next) => {
     void applicationController.updateStatus(req, res, next);
+  },
+);
+
+/** Assign a recruiter to an application (sheet 338). */
+employerApplicationRouter.patch(
+  '/:id/assign',
+  requireEmployerPermission(EMPLOYER_PERMISSIONS.APPLICATIONS_MANAGE),
+  validateApplicationIdParam,
+  validateBody(assignApplicationSchema),
+  (req, res, next) => {
+    void employerAssignmentController.assignApplication(req, res, next);
   },
 );
 

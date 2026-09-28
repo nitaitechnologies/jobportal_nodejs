@@ -222,6 +222,13 @@ export const env = {
     String(15 * 60 * 1000),
   ),
   aiRecruitmentRateLimitMax: parsePositiveInt('AI_RECRUITMENT_RATE_LIMIT_MAX', '40'),
+  /**
+   * Razorpay (sheet 358). When key id + secret are set, checkout creates a live order.
+   * When empty, payments stay on the simulated confirm/fail flow.
+   */
+  razorpayKeyId: (process.env.RAZORPAY_KEY_ID ?? '').trim(),
+  razorpayKeySecret: (process.env.RAZORPAY_KEY_SECRET ?? '').trim(),
+  razorpayWebhookSecret: (process.env.RAZORPAY_WEBHOOK_SECRET ?? '').trim(),
   /** Realtime chat via Socket.IO (default on). */
   enableChat:
     process.env.ENABLE_CHAT !== undefined

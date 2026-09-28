@@ -144,5 +144,11 @@ export type {
   WalletTransactionModel,
 } from './CompanyWallet';
 
+export { CompanyActivityLog } from './CompanyActivityLog';
+export type {
+  ICompanyActivityLog,
+  CompanyActivityLogModel,
+} from './CompanyActivityLog';
+
 export { RecontactReminder } from './RecontactReminder';
 export type { IRecontactReminder, RecontactReminderModel } from './RecontactReminder';

@@ -185,6 +185,11 @@ const jobSchema = new Schema(
     lastRenewedAt: { type: Date },
     /** When we last notified the employer that this listing is nearing expiry. */
     expiryReminderSentAt: { type: Date },
+    /** Team members assigned to this job (sheet 337). */
+    assignedEmployerIds: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'Employer' }],
+      default: [],
+    },
     deletedAt: { type: Date },
   },
   {

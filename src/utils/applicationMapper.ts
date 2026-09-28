@@ -28,6 +28,8 @@ export interface ApplicationLike {
     updatedAt?: Date | null;
   }> | null;
   internalRating?: number | null;
+  source?: string | null;
+  assignedEmployerId?: Types.ObjectId | { toString(): string } | null;
   statusHistory?: Array<{
     from?: string;
     to?: string;
@@ -35,7 +37,6 @@ export interface ApplicationLike {
     byName?: string | null;
     auto?: boolean | null;
   }> | null;
-  source?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -111,6 +112,10 @@ export function mapEmployerApplication(
     })),
     internalRating:
       typeof application.internalRating === 'number' ? application.internalRating : null,
+    source: application.source ?? 'platform',
+    assignedEmployerId: application.assignedEmployerId
+      ? application.assignedEmployerId.toString()
+      : null,
     statusHistory: (application.statusHistory ?? []).map((entry) => ({
       from: entry.from ?? '',
       to: entry.to ?? '',

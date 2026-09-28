@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { HTTP_STATUS } from '../constants';
+import { env } from '../config/env';
 import { resolveCreditPackById, resolveCreditPacks } from './creditCatalog.service';
 import { Company } from '../models/Company';
 import { Invoice } from '../models/Invoice';
@@ -18,6 +19,15 @@ import {
 import { activateSubscription } from './subscription.service';
 import { walletService } from './wallet.service';
 import { notifySafely } from './notification.service';
+import {
+  createRazorpayOrder,
+  razorpayConfigured,
+  refundRazorpayPayment,
+  signCheckoutToken,
+  verifyCheckoutToken,
+  verifyRazorpayPaymentSignature,
+  verifyRazorpayWebhook,
+} from './paymentGateway.service';
 import type {
   PaymentCheckoutInput,
   PaymentConfirmInput,
@@ -106,7 +116,9 @@ export class PaymentService {
     const packs = await resolveCreditPacks();
     return {
       packs: packs.map((pack) => ({ ...pack })),
-      note: 'Prices are taxable; GST is added at checkout. No live payment gateway yet (simulated confirm).',
+      note: razorpayConfigured()
+        ? 'Prices are taxable; GST is added at checkout. Payments are collected via Razorpay.'
+        : 'Prices are taxable; GST is added at checkout. Gateway keys are not set, so checkout stays simulated.',
     };
   }
 
@@ -156,6 +168,8 @@ export class PaymentService {
     const taxableAmount = Math.max(0, amount - discountAmount);
     const tax = computeGstBreakdown(taxableAmount, { hasGstin });
 
+    const useGateway = razorpayConfigured() && tax.totalAmount >= 1;
+
     const payment = await Payment.create({
       companyId: new mongoose.Types.ObjectId(employer.companyId),
       employerId: new mongoose.Types.ObjectId(employer.employerId),
@@ -175,21 +189,54 @@ export class PaymentService {
       planId,
       creditPackId,
       credits,
-      paymentProvider: 'simulated',
+      paymentProvider: useGateway ? 'razorpay' : 'simulated',
       description,
       metadata: {
         autoRenew: Boolean(input.autoRenew),
-        simulated: true,
+        simulated: !useGateway,
       },
     });
+
+    let orderId = '';
+    let keyId = '';
+    if (useGateway) {
+      const order = await createRazorpayOrder({
+        amountPaise: Math.round(tax.totalAmount * 100),
+        receipt: payment._id.toString(),
+        notes: {
+          paymentId: payment._id.toString(),
+          kind: input.kind,
+          companyId: employer.companyId,
+        },
+      });
+      orderId = order.orderId;
+      keyId = order.keyId;
+      payment.set('metadata', {
+        ...(payment.metadata as Record<string, unknown>),
+        gatewayOrderId: order.orderId,
+        simulated: false,
+      });
+      await payment.save();
+    }
+
+    const token = signCheckoutToken(payment._id.toString());
+    const checkoutPath = useGateway
+      ? `/payments/gateway/${payment._id.toString()}?token=${encodeURIComponent(token)}`
+      : '';
 
     return {
       payment: mapPayment(payment),
       taxBreakdown: tax,
       instructions: {
-        provider: 'simulated',
-        nextStep:
-          'POST /employer/payments/:id/confirm to complete (no live gateway yet). Use /fail to simulate a decline.',
+        provider: useGateway ? 'razorpay' : 'simulated',
+        keyId,
+        orderId,
+        checkoutPath,
+        amount: tax.totalAmount,
+        currency,
+        nextStep: useGateway
+          ? 'Open checkoutPath to pay with Razorpay. The app polls payment status after return.'
+          : 'POST /employer/payments/:id/confirm to complete (gateway keys are not set). Use /fail to simulate a decline.',
       },
     };
   }
@@ -216,9 +263,50 @@ export class PaymentService {
       );
     }
 
+    if (payment.paymentProvider === 'razorpay') {
+      const orderId =
+        input.razorpayOrderId?.trim() ||
+        String((payment.metadata as { gatewayOrderId?: string } | undefined)?.gatewayOrderId ?? '');
+      const razorpayPaymentId = input.razorpayPaymentId?.trim() || input.externalPaymentId?.trim();
+      const signature = input.razorpaySignature?.trim() ?? '';
+      if (!orderId || !razorpayPaymentId || !signature) {
+        throw new AppError(
+          'Razorpay payment id, order id, and signature are required',
+          HTTP_STATUS.BAD_REQUEST,
+        );
+      }
+      if (
+        !verifyRazorpayPaymentSignature({
+          orderId,
+          paymentId: razorpayPaymentId,
+          signature,
+        })
+      ) {
+        throw new AppError('Payment signature is invalid', HTTP_STATUS.BAD_REQUEST);
+      }
+      return this.capturePayment(payment, razorpayPaymentId);
+    }
+
     const externalPaymentId =
       input.externalPaymentId?.trim() ||
       `sim_${payment._id.toString()}_${Date.now()}`;
+
+    return this.capturePayment(payment, externalPaymentId);
+  }
+
+  private async capturePayment(
+    payment: InstanceType<typeof Payment>,
+    externalPaymentId: string,
+  ) {
+    if (payment.status === 'succeeded') {
+      return this.buildConfirmResponse(payment);
+    }
+    if (payment.status !== 'pending') {
+      throw new AppError(
+        `Payment cannot be confirmed from status "${payment.status}"`,
+        HTTP_STATUS.BAD_REQUEST,
+      );
+    }
 
     let subscriptionPayload = null;
 
@@ -230,14 +318,14 @@ export class PaymentService {
         (payment.metadata as { autoRenew?: boolean } | undefined)?.autoRenew,
       );
       const subscription = await activateSubscription({
-        userId: employer.userId,
-        companyId: employer.companyId,
+        userId: payment.userId.toString(),
+        companyId: payment.companyId.toString(),
         planId: payment.planId.toString(),
         autoRenew,
         couponCode: payment.couponCode || undefined,
         actorRole: 'employer',
       });
-      subscription.paymentProvider = 'simulated';
+      subscription.paymentProvider = payment.paymentProvider || 'simulated';
       subscription.externalSubscriptionId = externalPaymentId;
       await subscription.save();
       payment.subscriptionId = subscription._id as mongoose.Types.ObjectId;
@@ -248,7 +336,7 @@ export class PaymentService {
         throw new AppError('Payment has no credits to grant', HTTP_STATUS.BAD_REQUEST);
       }
       await walletService.credit({
-        companyId: employer.companyId,
+        companyId: payment.companyId.toString(),
         credits,
         type: 'purchase',
         paymentId: payment._id.toString(),
@@ -258,7 +346,6 @@ export class PaymentService {
     }
 
     payment.externalPaymentId = externalPaymentId;
-    payment.paymentProvider = 'simulated';
     payment.status = 'succeeded';
     payment.confirmedAt = new Date();
     payment.failureReason = '';
@@ -271,7 +358,7 @@ export class PaymentService {
     );
 
     await notifySafely({
-      recipientId: employer.userId,
+      recipientId: payment.userId.toString(),
       type: 'PAYMENT_SUCCEEDED',
       title: 'Payment successful',
       message:
@@ -291,7 +378,7 @@ export class PaymentService {
       subscription: subscriptionPayload,
       wallet:
         payment.kind === 'credits'
-          ? (await walletService.getWallet(employer.companyId)).wallet
+          ? (await walletService.getWallet(payment.companyId.toString())).wallet
           : null,
     };
   }
@@ -416,6 +503,16 @@ export class PaymentService {
           message: `Refundable amount is up to ${maxRefundable}`,
         },
       ]);
+    }
+
+    if (
+      payment.paymentProvider === 'razorpay' &&
+      (payment.externalPaymentId ?? '').startsWith('pay_')
+    ) {
+      await refundRazorpayPayment({
+        razorpayPaymentId: payment.externalPaymentId ?? '',
+        amountPaise: Math.round(refundAmount * 100),
+      });
     }
 
     payment.refundedAmount = already + refundAmount;
@@ -599,6 +696,149 @@ export class PaymentService {
         creditsSpent: row.creditsSpent as number,
       })),
     };
+  }
+
+  async gatewayCheckoutHtml(paymentId: string, token: string): Promise<string> {
+    if (!mongoose.Types.ObjectId.isValid(paymentId) || !verifyCheckoutToken(token, paymentId)) {
+      throw new AppError('Checkout link is invalid or expired', HTTP_STATUS.UNAUTHORIZED);
+    }
+    const payment = await Payment.findById(paymentId);
+    if (!payment || payment.paymentProvider !== 'razorpay') {
+      throw new AppError('Payment not found', HTTP_STATUS.NOT_FOUND);
+    }
+    if (payment.status === 'succeeded') {
+      return '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><p>This payment is already complete. Return to the app.</p>';
+    }
+    const orderId = String(
+      (payment.metadata as { gatewayOrderId?: string } | undefined)?.gatewayOrderId ?? '',
+    );
+    if (!orderId || !env.razorpayKeyId) {
+      throw new AppError('Payment order is not ready', HTTP_STATUS.BAD_REQUEST);
+    }
+    const amountPaise = Math.round((payment.totalAmount ?? 0) * 100);
+    const callbackUrl = `${env.apiPrefix}/payments/gateway/callback`;
+    return `<!doctype html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pay WorkIndia</title></head>
+<body style="font-family:sans-serif;padding:24px">
+<p id="status">Opening secure checkout…</p>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+const statusEl = document.getElementById('status');
+const options = {
+  key: ${JSON.stringify(env.razorpayKeyId)},
+  amount: ${amountPaise},
+  currency: "INR",
+  name: "WorkIndia",
+  description: ${JSON.stringify(payment.description || 'WorkIndia payment')},
+  order_id: ${JSON.stringify(orderId)},
+  handler: async function (response) {
+    statusEl.textContent = 'Confirming payment…';
+    try {
+      const res = await fetch(${JSON.stringify(callbackUrl)}, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paymentId: ${JSON.stringify(payment._id.toString())},
+          token: ${JSON.stringify(token)},
+          razorpayOrderId: response.razorpay_order_id,
+          razorpayPaymentId: response.razorpay_payment_id,
+          razorpaySignature: response.razorpay_signature
+        })
+      });
+      statusEl.textContent = res.ok
+        ? 'Payment successful. You can return to the app.'
+        : 'Payment could not be confirmed. Return to the app and try again.';
+    } catch (err) {
+      statusEl.textContent = 'Network error while confirming. Return to the app.';
+    }
+  },
+  modal: { ondismiss: function () { statusEl.textContent = 'Payment cancelled. Return to the app.'; } }
+};
+new Razorpay(options).open();
+</script>
+</body></html>`;
+  }
+
+  async completeGatewayCallback(input: {
+    paymentId: string;
+    token: string;
+    razorpayOrderId: string;
+    razorpayPaymentId: string;
+    razorpaySignature: string;
+  }) {
+    if (!verifyCheckoutToken(input.token, input.paymentId)) {
+      throw new AppError('Checkout link is invalid or expired', HTTP_STATUS.UNAUTHORIZED);
+    }
+    const payment = await Payment.findById(input.paymentId);
+    if (!payment) {
+      throw new AppError('Payment not found', HTTP_STATUS.NOT_FOUND);
+    }
+    if (payment.status === 'succeeded') {
+      return this.buildConfirmResponse(payment);
+    }
+    const orderId =
+      input.razorpayOrderId ||
+      String((payment.metadata as { gatewayOrderId?: string } | undefined)?.gatewayOrderId ?? '');
+    if (
+      !verifyRazorpayPaymentSignature({
+        orderId,
+        paymentId: input.razorpayPaymentId,
+        signature: input.razorpaySignature,
+      })
+    ) {
+      throw new AppError('Payment signature is invalid', HTTP_STATUS.BAD_REQUEST);
+    }
+    return this.capturePayment(payment, input.razorpayPaymentId);
+  }
+
+  async handleRazorpayWebhook(rawBody: Buffer, signature: string) {
+    if (!verifyRazorpayWebhook(rawBody, signature)) {
+      throw new AppError('Invalid webhook signature', HTTP_STATUS.BAD_REQUEST);
+    }
+    const event = JSON.parse(rawBody.toString('utf8')) as {
+      event?: string;
+      payload?: {
+        payment?: {
+          entity?: {
+            id?: string;
+            status?: string;
+            error_description?: string;
+            notes?: { paymentId?: string };
+          };
+        };
+      };
+    };
+    const entity = event.payload?.payment?.entity;
+    const paymentId = entity?.notes?.paymentId ?? '';
+    if (!paymentId || !mongoose.Types.ObjectId.isValid(paymentId)) {
+      return { ignored: true };
+    }
+    const payment = await Payment.findById(paymentId);
+    if (!payment) return { ignored: true };
+
+    if (event.event === 'payment.captured' || entity?.status === 'captured') {
+      if (payment.status === 'succeeded') return { ignored: false, alreadyConfirmed: true };
+      if (entity?.id) {
+        await this.capturePayment(payment, entity.id);
+      }
+      return { ignored: false };
+    }
+
+    if (event.event === 'payment.failed' && payment.status === 'pending') {
+      payment.status = 'failed';
+      payment.failureReason = entity?.error_description || 'Payment failed';
+      payment.failedAt = new Date();
+      if (entity?.id) payment.externalPaymentId = entity.id;
+      await payment.save();
+      await notifySafely({
+        recipientId: payment.userId.toString(),
+        type: 'PAYMENT_FAILED',
+        title: 'Payment failed',
+        message: payment.failureReason || 'Your payment could not be completed.',
+        data: { paymentId: payment._id.toString(), kind: payment.kind },
+      });
+    }
+    return { ignored: false };
   }
 }
 

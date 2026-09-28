@@ -79,6 +79,12 @@ const applicationSchema = new Schema(
     internalRating: { type: Number, min: 1, max: 5, default: null },
     statusHistory: { type: [statusHistorySchema], default: [] },
     source: { type: String, trim: true, default: 'platform', maxlength: 80 },
+    /** Recruiter assigned to this application (sheet 338). */
+    assignedEmployerId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Employer',
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -91,6 +97,7 @@ applicationSchema.index({ jobId: 1, status: 1, appliedAt: -1 });
 applicationSchema.index({ employerId: 1, status: 1, appliedAt: -1 });
 applicationSchema.index({ companyId: 1, status: 1 });
 applicationSchema.index({ candidateId: 1, status: 1, appliedAt: -1 });
+applicationSchema.index({ companyId: 1, assignedEmployerId: 1, appliedAt: -1 });
 
 export type IApplication = InferSchemaType<typeof applicationSchema>;
 export type ApplicationModel = Model<IApplication>;

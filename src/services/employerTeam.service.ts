@@ -12,12 +12,20 @@ import { AppError } from '../utils/AppError';
 import { hashPassword } from '../utils/password';
 import { isValidPhone, normalizePhone } from '../utils/phone';
 import { authSessionService } from './authSession.service';
+import { recordCompanyActivity } from './companyActivity.service';
 import { getFeatureFlags } from '../utils/featureFlags';
 
 function designationForRole(role: EmployerTeamRole): string {
   if (role === 'owner') return 'Owner';
   if (role === 'hr') return 'HR';
   return 'Recruiter';
+}
+
+async function resolveActorName(employer: AuthenticatedEmployer): Promise<string> {
+  const doc = await Employer.findById(employer.employerId).select('userId');
+  if (!doc) return 'Hiring team';
+  const user = await User.findById(doc.userId).select('name');
+  return user?.name?.trim() || 'Hiring team';
 }
 
 export class EmployerTeamService {
@@ -120,6 +128,18 @@ export class EmployerTeamService {
       status: 'pending',
     });
 
+    const actorName = await resolveActorName(employer);
+    await recordCompanyActivity({
+      companyId: employer.companyId,
+      actorEmployerId: employer.employerId,
+      actorName,
+      action: 'team.invite',
+      entityType: 'invite',
+      entityId: invite._id.toString(),
+      summary: `Invited ${email} as ${input.teamRole}`,
+      metadata: { email, teamRole: input.teamRole },
+    });
+
     return {
       invite: {
         id: invite._id.toString(),
@@ -147,6 +167,19 @@ export class EmployerTeamService {
     }
     invite.status = 'revoked';
     await invite.save();
+
+    const actorName = await resolveActorName(employer);
+    await recordCompanyActivity({
+      companyId: employer.companyId,
+      actorEmployerId: employer.employerId,
+      actorName,
+      action: 'team.invite_revoked',
+      entityType: 'invite',
+      entityId: invite._id.toString(),
+      summary: `Revoked invite for ${invite.email}`,
+      metadata: { email: invite.email },
+    });
+
     return { revoked: true };
   }
 
@@ -214,6 +247,17 @@ export class EmployerTeamService {
     invite.acceptedEmployerId = member._id;
     await invite.save();
 
+    await recordCompanyActivity({
+      companyId: company._id.toString(),
+      actorEmployerId: member._id.toString(),
+      actorName: user.name?.trim() || invite.email,
+      action: 'team.joined',
+      entityType: 'team',
+      entityId: member._id.toString(),
+      summary: `${user.name?.trim() || invite.email} joined as ${teamRole}`,
+      metadata: { teamRole, email: invite.email },
+    });
+
     const { accessToken, sessionId } = await authSessionService.createAccessToken(
       user._id.toString(),
       'employer',
@@ -280,9 +324,23 @@ export class EmployerTeamService {
       throw new AppError('Cannot change the owner role', HTTP_STATUS.FORBIDDEN);
     }
 
+    const previousRole = member.teamRole;
     member.teamRole = teamRole;
     member.designation = designationForRole(teamRole);
     await member.save();
+
+    const actorName = await resolveActorName(employer);
+    const memberUser = await User.findById(member.userId).select('name email');
+    await recordCompanyActivity({
+      companyId: employer.companyId,
+      actorEmployerId: employer.employerId,
+      actorName,
+      action: 'team.role_changed',
+      entityType: 'team',
+      entityId: member._id.toString(),
+      summary: `Changed ${memberUser?.name?.trim() || memberUser?.email || 'member'} from ${previousRole} to ${teamRole}`,
+      metadata: { previousRole, teamRole, memberId },
+    });
 
     return {
       member: {
@@ -314,9 +372,22 @@ export class EmployerTeamService {
       throw new AppError('Cannot remove the company owner', HTTP_STATUS.FORBIDDEN);
     }
 
+    const memberUser = await User.findById(member.userId).select('name email');
     member.status = 'inactive';
     await member.save();
     await authSessionService.revokeOthers(member.userId.toString());
+
+    const actorName = await resolveActorName(employer);
+    await recordCompanyActivity({
+      companyId: employer.companyId,
+      actorEmployerId: employer.employerId,
+      actorName,
+      action: 'team.member_removed',
+      entityType: 'team',
+      entityId: member._id.toString(),
+      summary: `Removed ${memberUser?.name?.trim() || memberUser?.email || 'member'} from the team`,
+      metadata: { memberId, teamRole: member.teamRole },
+    });
 
     return { removed: true };
   }
