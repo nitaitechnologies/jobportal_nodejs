@@ -61,9 +61,8 @@ export class OpenAiService {
     const raw = (await response.json().catch(() => ({}))) as OpenAiChatCompletionResponse;
 
     if (!response.ok) {
-      const detail = raw.error?.message?.trim() || `OpenAI HTTP ${response.status}`;
       throw new AppError(
-        `AI request failed: ${detail}`,
+        'AI coaching is temporarily unavailable. Please try again.',
         response.status === 429
           ? HTTP_STATUS.TOO_MANY_REQUESTS
           : HTTP_STATUS.SERVICE_UNAVAILABLE,

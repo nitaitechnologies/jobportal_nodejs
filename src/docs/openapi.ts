@@ -8,6 +8,7 @@ const TAGS: OpenAPIV3.TagObject[] = [
   { name: 'Candidate Auth', description: 'Candidate registration and login' },
   { name: 'Candidate Profile', description: 'Candidate profile and sections' },
   { name: 'Candidate AI', description: 'AI job matching and career coach (ChatGPT)' },
+  { name: 'Candidate Role Ads', description: 'Sponsored role ads matched to skill gaps' },
   { name: 'AI Resume', description: 'AI resume builder and job-specific tailoring' },
   { name: 'Candidate Saved Jobs', description: 'Saved jobs' },
   { name: 'Candidate Applications', description: 'Job applications' },
@@ -49,6 +50,7 @@ const TAGS: OpenAPIV3.TagObject[] = [
   { name: 'Admin Analytics', description: 'Platform analytics' },
   { name: 'Admin Settings', description: 'Platform settings management' },
   { name: 'Admin Audit Logs', description: 'Admin audit trail' },
+  { name: 'Admin Role Ads', description: 'Ad selling against roles-master categories' },
 ];
 
 function buildServers(): OpenAPIV3.ServerObject[] {

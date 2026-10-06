@@ -7,7 +7,9 @@ import type { AuthenticatedCandidate } from '../types/auth.types';
 import { AppError } from '../utils/AppError';
 import { buildPublicVisibilityFilter } from '../utils/jobSearchQuery';
 import { scoreJobMatch } from '../utils/matchScore';
+import { normalizeRoleKey } from '../utils/roleAdMatch';
 import { openAiService } from './openai.service';
+import { roleAdService } from './roleAd.service';
 
 async function loadPublicJobsFilter(now = new Date()) {
   const companies = await Company.find({
@@ -118,11 +120,15 @@ export class AiCareerCoachService {
       openToWork: candidateDoc.openToWork ?? true,
     };
 
-    const { content, model } = await openAiService.chatJson(
-      [
-        {
-          role: 'system',
-          content: `You are an AI Career Coach for WorkIndia (Indian job market).
+    let coach: Record<string, unknown>;
+    let model = 'profile';
+    let usedAi = false;
+    try {
+      const result = await openAiService.chatJson(
+        [
+          {
+            role: 'system',
+            content: `You are an AI Career Coach for WorkIndia (Indian job market).
 Return JSON only:
 {
   "coachSummary": "2-3 sentences",
@@ -144,49 +150,119 @@ Rules:
 - Do not invent employers the candidate worked at.
 - Salary numbers must be INR yearly estimates when possible.
 - Always write as coaching guidance, AI-assisted.`,
-        },
-        {
-          role: 'user',
-          content: JSON.stringify({
-            profile,
-            marketSnapshot: {
-              topMatchedJobs: topJobs.map((j) => ({
-                title: j.title,
-                matchPercentage: j.match.overall,
-                matchingSkills: j.match.matchingSkills,
-                missingSkills: j.match.missingSkills,
-                salaryMin: j.salaryMin,
-                salaryMax: j.salaryMax,
-              })),
-              hotMissingSkills,
-            },
-          }),
-        },
-      ],
-      { temperature: 0.45 },
-    );
-
-    let coach: Record<string, unknown>;
-    try {
-      coach = JSON.parse(content) as Record<string, unknown>;
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              profile,
+              marketSnapshot: {
+                topMatchedJobs: topJobs.map((j) => ({
+                  title: j.title,
+                  matchPercentage: j.match.overall,
+                  matchingSkills: j.match.matchingSkills,
+                  missingSkills: j.match.missingSkills,
+                  salaryMin: j.salaryMin,
+                  salaryMax: j.salaryMax,
+                })),
+                hotMissingSkills,
+              },
+            }),
+          },
+        ],
+        { temperature: 0.45 },
+      );
+      model = result.model;
+      coach = JSON.parse(result.content) as Record<string, unknown>;
+      usedAi = true;
     } catch {
-      throw new AppError('AI career coach returned invalid JSON', HTTP_STATUS.SERVICE_UNAVAILABLE);
+      const roleLabel = profile.currentJobTitle || profile.headline || 'your current role';
+      const suggestions = hotMissingSkills.slice(0, 8).map((item) => ({
+        skill: item.skill,
+        why: `Jobs close to ${roleLabel} often ask for ${item.skill}, and it is not on your profile yet.`,
+        howToLearn: `Take a short ${item.skill} course, then add it to your skills.`,
+      }));
+      const jobHighs = topJobs
+        .map((job) => job.salaryMax)
+        .filter((value): value is number => typeof value === 'number' && value > 0);
+      coach = {
+        coachSummary: suggestions.length
+          ? `As someone in ${roleLabel}, these skills show up on jobs that fit you and are still missing from your profile.`
+          : `Your profile already covers the skills on the closest open jobs.`,
+        careerRecommendations: topJobs.slice(0, 4).map((job) => ({
+          title: job.title,
+          why: `${job.match.overall}% match with your current profile.`,
+        })),
+        jobRecommendations: topJobs.slice(0, 4).map((job) => ({
+          title: job.title,
+          why: job.match.missingSkills.length
+            ? `Still missing: ${job.match.missingSkills.slice(0, 3).join(', ')}.`
+            : 'Strong overlap with your skills.',
+        })),
+        salaryGuidance: {
+          suggestedMin: profile.expectedSalary,
+          suggestedMax: jobHighs.length ? Math.max(...jobHighs) : profile.expectedSalary,
+          currency: 'INR',
+          period: 'yearly',
+          rationale: 'Based on your expected salary and the closest matching jobs.',
+          negotiationTips: [],
+        },
+        missingSkillSuggestions: suggestions,
+        actionPlan: suggestions.slice(0, 4).map((item) => `Learn ${item.skill} and add it to your profile.`),
+      };
     }
 
     const salaryGuidance = (coach.salaryGuidance ?? {}) as Record<string, unknown>;
+    const missingSkillSuggestions = Array.isArray(coach.missingSkillSuggestions)
+      ? coach.missingSkillSuggestions.slice(0, 10)
+      : [];
+    const skillNames = [
+      profile.currentJobTitle,
+      profile.headline,
+      ...(Array.isArray(profile.preferredRoles) ? profile.preferredRoles : []),
+      ...topJobs.map((job) => job.title),
+      ...missingSkillSuggestions
+        .map((item) =>
+          item && typeof item === 'object' && typeof (item as { skill?: unknown }).skill === 'string'
+            ? (item as { skill: string }).skill
+            : '',
+        )
+        .filter(Boolean),
+      ...hotMissingSkills.map((item) => item.skill),
+    ];
+    let sponsoredAds: Awaited<ReturnType<typeof roleAdService.findLiveForSkills>> = [];
+    try {
+      sponsoredAds = await roleAdService.findLiveForSkills(skillNames);
+    } catch {
+      sponsoredAds = [];
+    }
+    const missingWithAds = missingSkillSuggestions.map((item) => {
+      const skill =
+        item && typeof item === 'object' && typeof (item as { skill?: unknown }).skill === 'string'
+          ? (item as { skill: string }).skill
+          : '';
+      const skillKey = normalizeRoleKey(skill);
+      const ads = sponsoredAds.filter((ad) =>
+        ad.matchedSkills.some((matched) => normalizeRoleKey(matched) === skillKey),
+      );
+      return item && typeof item === 'object' ? { ...(item as Record<string, unknown>), ads } : item;
+    });
 
     return {
-      aiGenerated: true as const,
-      aiLabel: AI_COACH_LABEL,
-      aiDisclaimer: AI_COACH_DISCLAIMER,
-      provider: 'openai' as const,
+      aiGenerated: usedAi,
+      aiLabel: usedAi ? AI_COACH_LABEL : 'Profile match',
+      aiDisclaimer: usedAi
+        ? AI_COACH_DISCLAIMER
+        : 'Guidance is based on your profile and open jobs. Review it before you act.',
+      provider: usedAi ? ('openai' as const) : ('rules' as const),
       model,
       generatedAt: new Date().toISOString(),
       purpose: 'career_coach' as const,
       uiHint: {
-        showAiBadge: true as const,
-        badgeText: 'AI-generated',
-        bannerText: 'AI Career Coach — guidance only, review carefully',
+        showAiBadge: usedAi,
+        badgeText: usedAi ? 'AI-generated' : 'Profile match',
+        bannerText: usedAi
+          ? 'AI Career Coach — guidance only, review carefully'
+          : 'Skill gaps from jobs that match your profile',
       },
       coachSummary: typeof coach.coachSummary === 'string' ? coach.coachSummary.trim() : '',
       careerRecommendations: Array.isArray(coach.careerRecommendations)
@@ -207,9 +283,8 @@ Rules:
           ? salaryGuidance.negotiationTips.filter((x): x is string => typeof x === 'string').slice(0, 6)
           : [],
       },
-      missingSkillSuggestions: Array.isArray(coach.missingSkillSuggestions)
-        ? coach.missingSkillSuggestions.slice(0, 10)
-        : [],
+      missingSkillSuggestions: missingWithAds,
+      sponsoredAds,
       actionPlan: Array.isArray(coach.actionPlan)
         ? coach.actionPlan.filter((x): x is string => typeof x === 'string').slice(0, 8)
         : [],

@@ -14,6 +14,7 @@ import {
   type MatchBreakdown,
 } from '../utils/matchScore';
 import { openAiService } from './openai.service';
+import { roleAdService } from './roleAd.service';
 
 export const AI_MATCH_LABEL = 'AI-generated';
 export const AI_MATCH_DISCLAIMER =
@@ -329,11 +330,20 @@ Mark tone as helpful coaching, not guaranteed hiring.`,
     const company = await Company.findById(job.companyId).select('name').lean();
     const match = scoreJobMatch(jobToMatchSource(job), candidateToMatchSource(candidateDoc));
 
-    const { content, model } = await openAiService.chatJson(
-      [
-        {
-          role: 'system',
-          content: `Explain job fit for a candidate. Return JSON:
+    let explanation: {
+      summary: string;
+      whyItMatches: string[];
+      gapsToImprove: string[];
+      nextSteps: string[];
+    };
+    let model = 'profile';
+    let usedAi = false;
+    try {
+      const result = await openAiService.chatJson(
+        [
+          {
+            role: 'system',
+            content: `Explain job fit for a candidate. Return JSON:
 {
   "summary": "2-3 sentences",
   "whyItMatches": ["bullet"],
@@ -341,55 +351,81 @@ Mark tone as helpful coaching, not guaranteed hiring.`,
   "nextSteps": ["bullet"]
 }
 Use only provided facts. Label content as AI coaching, not a hiring guarantee.`,
-        },
-        {
-          role: 'user',
-          content: JSON.stringify({
-            profile: profileSnapshot(user, candidateDoc),
-            job: {
-              id: job._id.toString(),
-              title: job.title,
-              companyName: company?.name ?? 'Company',
-              description: (job.description ?? '').slice(0, 2500),
-              skills: job.skills ?? [],
-              requirements: (job.requirements ?? []).slice(0, 20),
-              workMode: job.workMode,
-              salaryMin: job.salaryMin,
-              salaryMax: job.salaryMax,
-            },
-            match,
-          }),
-        },
-      ],
-      { temperature: 0.4 },
-    );
-
-    let explanation: {
-      summary: string;
-      whyItMatches: string[];
-      gapsToImprove: string[];
-      nextSteps: string[];
-    };
-    try {
-      const parsed = JSON.parse(content) as Record<string, unknown>;
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              profile: profileSnapshot(user, candidateDoc),
+              job: {
+                id: job._id.toString(),
+                title: job.title,
+                companyName: company?.name ?? 'Company',
+                description: (job.description ?? '').slice(0, 2500),
+                skills: job.skills ?? [],
+                requirements: (job.requirements ?? []).slice(0, 20),
+                workMode: job.workMode,
+                salaryMin: job.salaryMin,
+                salaryMax: job.salaryMax,
+              },
+              match,
+            }),
+          },
+        ],
+        { temperature: 0.4 },
+      );
+      const parsed = JSON.parse(result.content) as Record<string, unknown>;
+      model = result.model;
+      usedAi = true;
       explanation = {
         summary: typeof parsed.summary === 'string' ? parsed.summary.trim() : '',
         whyItMatches: Array.isArray(parsed.whyItMatches)
-          ? parsed.whyItMatches.filter((x): x is string => typeof x === 'string').slice(0, 8)
+          ? parsed.whyItMatches.filter((item): item is string => typeof item === 'string').slice(0, 8)
           : [],
         gapsToImprove: Array.isArray(parsed.gapsToImprove)
-          ? parsed.gapsToImprove.filter((x): x is string => typeof x === 'string').slice(0, 8)
+          ? parsed.gapsToImprove.filter((item): item is string => typeof item === 'string').slice(0, 8)
           : [],
         nextSteps: Array.isArray(parsed.nextSteps)
-          ? parsed.nextSteps.filter((x): x is string => typeof x === 'string').slice(0, 8)
+          ? parsed.nextSteps.filter((item): item is string => typeof item === 'string').slice(0, 8)
           : [],
       };
     } catch {
-      throw new AppError('AI returned invalid explanation JSON', HTTP_STATUS.SERVICE_UNAVAILABLE);
+      const missing = match.missingSkills ?? [];
+      explanation = {
+        summary: `${job.title} is a ${match.overall}% match with your profile.`,
+        whyItMatches: match.reasons.slice(0, 6),
+        gapsToImprove: missing.slice(0, 6).map((skill) => `Build ${skill} — this job asks for it.`),
+        nextSteps: missing.length
+          ? [`Learn ${missing.slice(0, 2).join(' and ')}, then add them to your profile.`]
+          : ['Your skills already cover this job. Apply if the role fits.'],
+      };
+    }
+
+    let sponsoredAds: Awaited<ReturnType<typeof roleAdService.findLiveForSkills>> = [];
+    try {
+      sponsoredAds = await roleAdService.findLiveForSkills([
+        ...(match.missingSkills ?? []),
+        job.title,
+      ]);
+    } catch {
+      sponsoredAds = [];
     }
 
     return {
-      ...provenance(model, 'AI explanation of why this job matches — review carefully'),
+      ...(usedAi
+        ? provenance(model, 'AI explanation of why this job matches — review carefully')
+        : {
+            aiGenerated: false as const,
+            aiLabel: 'Profile match',
+            aiDisclaimer: 'Based on your profile and this job. Review before you apply.',
+            provider: 'rules' as const,
+            model: null,
+            generatedAt: new Date().toISOString(),
+            uiHint: {
+              showAiBadge: false as const,
+              badgeText: '',
+              bannerText: 'Profile match',
+            },
+          }),
       purpose: 'match_explanation' as const,
       job: {
         id: job._id.toString(),
@@ -408,6 +444,7 @@ Use only provided facts. Label content as AI coaching, not a hiring guarantee.`,
         reasons: match.reasons,
       } satisfies Partial<MatchBreakdown> & Record<string, unknown>,
       explanation,
+      sponsoredAds,
     };
   }
 }

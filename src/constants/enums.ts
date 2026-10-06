@@ -111,6 +111,10 @@ export type LocationType = (typeof LOCATION_TYPES)[number];
 export const ENTITY_STATUSES = ['active', 'inactive'] as const;
 export type EntityStatus = (typeof ENTITY_STATUSES)[number];
 
+/** Sold role ads: pay per click, or affiliate course/partner links. */
+export const ROLE_AD_TYPES = ['click', 'affiliate'] as const;
+export type RoleAdType = (typeof ROLE_AD_TYPES)[number];
+
 export const APPLICATION_STATUSES = [
   'applied',
   'viewed',

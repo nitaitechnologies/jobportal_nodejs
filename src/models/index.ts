@@ -31,6 +31,12 @@ export type { ITaxonomyTerm, TaxonomyTermModel } from './TaxonomyTerm';
 export { ContentBanner } from './ContentBanner';
 export type { IContentBanner, ContentBannerModel } from './ContentBanner';
 
+export { RoleAd } from './RoleAd';
+export type { IRoleAd, RoleAdModel } from './RoleAd';
+
+export { RoleAdClick } from './RoleAdClick';
+export type { IRoleAdClick, RoleAdClickModel } from './RoleAdClick';
+
 export { FaqItem } from './FaqItem';
 export type { IFaqItem, FaqItemModel } from './FaqItem';
 

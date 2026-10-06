@@ -660,4 +660,48 @@ export const adminPaths: OpenAPIV3.PathsObject = {
   '/api/v1/admin/audit-logs/{id}': {
     get: adminGet('getAdminAuditLog', 'Admin Audit Logs', 'Get audit log', 'audit_logs.read', [idParam()]),
   },
+
+  '/api/v1/admin/role-ads': {
+    get: adminGet('listAdminRoleAds', 'Admin Role Ads', 'List sold role ads', 'articles.read', pageParams()),
+    post: op({
+      operationId: 'createAdminRoleAd',
+      tags: ['Admin Role Ads'],
+      summary: 'Create a role ad',
+      description: 'Requires admin JWT and permission `articles.create`. Categories come from the roles master.',
+      requestBody: jsonBody({ type: 'object', additionalProperties: true }),
+      data: obj,
+      errors: ['400', '401', '403'],
+    }),
+  },
+  '/api/v1/admin/role-ads/{id}': {
+    get: adminGet('getAdminRoleAd', 'Admin Role Ads', 'Get a role ad', 'articles.read', [idParam()]),
+    patch: op({
+      operationId: 'updateAdminRoleAd',
+      tags: ['Admin Role Ads'],
+      summary: 'Update a role ad',
+      description: 'Requires admin JWT and permission `articles.update`.',
+      parameters: [idParam()],
+      requestBody: jsonBody({ type: 'object', additionalProperties: true }),
+      data: obj,
+      errors: ['400', '401', '403', '404'],
+    }),
+    delete: op({
+      operationId: 'deleteAdminRoleAd',
+      tags: ['Admin Role Ads'],
+      summary: 'Delete a role ad',
+      description: 'Requires admin JWT and permission `articles.delete`.',
+      parameters: [idParam()],
+      data: obj,
+      errors: ['401', '403', '404'],
+    }),
+  },
+  '/api/v1/admin/role-ads/{id}/clicks': {
+    get: adminGet(
+      'listAdminRoleAdClicks',
+      'Admin Role Ads',
+      'Total clicks and clicks per candidate',
+      'articles.read',
+      [idParam(), ...pageParams()],
+    ),
+  },
 };

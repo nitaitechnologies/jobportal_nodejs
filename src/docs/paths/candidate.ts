@@ -561,9 +561,40 @@ export const candidatePaths: OpenAPIV3.PathsObject = {
       tags: ['Candidate AI'],
       summary: 'AI Career Coach pack',
       description:
-        'Career/job recommendations, salary guidance, and missing-skill suggestions. Always labelled AI-generated. Requires OPENAI_API_KEY + ENABLE_AI_CAREER_COACH.',
+        'Career/job recommendations, salary guidance, and missing-skill suggestions. Includes sponsored role ads matched to those skill gaps. Always labelled AI-generated. Requires OPENAI_API_KEY + ENABLE_AI_CAREER_COACH.',
       data: obj,
       errors: ['401', '403', '404', '429'],
+    }),
+  },
+  '/api/v1/candidate/role-ads': {
+    get: op({
+      operationId: 'suggestCandidateRoleAds',
+      tags: ['Candidate Role Ads'],
+      summary: 'Role ads for skill gaps',
+      description:
+        'Live ads whose roles-master categories match comma-separated skills (example: Next.js). Used by the website and the mobile app.',
+      parameters: [
+        {
+          name: 'skills',
+          in: 'query',
+          required: true,
+          schema: { type: 'string' },
+          description: 'Comma-separated skill or role labels',
+        },
+      ],
+      data: obj,
+      errors: ['400', '401', '403'],
+    }),
+  },
+  '/api/v1/candidate/role-ads/{id}/click': {
+    post: op({
+      operationId: 'recordCandidateRoleAdClick',
+      tags: ['Candidate Role Ads'],
+      summary: 'Record a role ad click',
+      description: 'Increments the ad total and this candidate’s click count, then returns the destination link.',
+      parameters: [idParam()],
+      data: obj,
+      errors: ['401', '403', '404'],
     }),
   },
 };
