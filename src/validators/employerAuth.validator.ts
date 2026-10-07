@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { optionalReferralCode } from './referral.validator';
 import { isValidPhone, normalizePhone } from '../utils/phone';
 
 export const employerRegisterSchema = z.object({
@@ -95,6 +96,7 @@ export const employerRegisterSchema = z.object({
   /** Optional UI job role → mapped to designation; new companies always start as owner. */
   teamRole: z.enum(['owner', 'hr', 'recruiter']).optional(),
   designation: z.string().trim().max(120).optional(),
+  referralCode: optionalReferralCode,
 });
 
 export const employerLoginSchema = z.object({

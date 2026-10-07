@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { optionalReferralCode } from './referral.validator';
 import { isValidPhone, normalizePhone } from '../utils/phone';
 
 export const candidateRegisterSchema = z.object({
@@ -79,6 +80,7 @@ export const candidateRegisterSchema = z.object({
     .regex(/^[a-z0-9_-]+$/i, 'Invalid acquisition source')
     .optional()
     .default('direct'),
+  referralCode: optionalReferralCode,
 });
 
 export const candidateLoginSchema = z.object({
@@ -164,6 +166,7 @@ export const candidateOtpVerifySchema = z.object({
       }
     })
     .optional(),
+  referralCode: optionalReferralCode,
 });
 
 const optionalEmailField = z

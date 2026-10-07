@@ -20,6 +20,7 @@ import { getFeatureFlags } from '../utils/featureFlags';
 import { trackSafely } from './analytics.service';
 import { otpService } from './otp.service';
 import { passwordResetService } from './passwordReset.service';
+import { referralService } from './referral.service';
 
 const INVALID_CREDENTIALS = 'Invalid email or password';
 
@@ -123,6 +124,17 @@ export class CandidateAuthService {
         profileVisibility: 'public',
         acquisitionSource: input.acquisitionSource?.trim() || 'direct',
       });
+
+      try {
+        await referralService.ensureCode(user._id, 'candidate');
+        await referralService.creditOnSignup({
+          newUserId: user._id,
+          newUserRole: 'candidate',
+          referralCode: input.referralCode,
+        });
+      } catch (referralError) {
+        console.error('[referral] candidate signup attribution failed', referralError);
+      }
 
       return buildAuthPayload(user, candidate);
     } catch (error) {
@@ -264,6 +276,17 @@ export class CandidateAuthService {
 
       user.lastLoginAt = new Date();
       await user.save();
+
+      try {
+        await referralService.ensureCode(user._id, 'candidate');
+        await referralService.creditOnSignup({
+          newUserId: user._id,
+          newUserRole: 'candidate',
+          referralCode: input.referralCode,
+        });
+      } catch (referralError) {
+        console.error('[referral] candidate OTP attribution failed', referralError);
+      }
 
       await trackSafely({
         eventType: 'candidate_login',

@@ -258,6 +258,16 @@ export const DEFAULT_PLATFORM_SETTINGS: readonly DefaultPlatformSetting[] = [
     isEditable: true,
   },
   {
+    key: 'referral.pointsPerSignup',
+    value: 50,
+    type: 'number',
+    group: 'general',
+    description: 'Points added to the referrer wallet when someone registers with their link',
+    isPublic: false,
+    isActive: true,
+    isEditable: true,
+  },
+  {
     key: 'platform.maintenance.message',
     value: 'WorkIndia is temporarily under maintenance. Please try again shortly.',
     type: 'string',

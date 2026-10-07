@@ -18,6 +18,7 @@ import { getFeatureFlags } from '../utils/featureFlags';
 import { trackSafely } from './analytics.service';
 import { authSessionService, type SessionDeviceMeta } from './authSession.service';
 import { otpService } from './otp.service';
+import { referralService } from './referral.service';
 
 const INVALID_CREDENTIALS = 'Invalid email or password';
 
@@ -195,6 +196,17 @@ export class EmployerAuthService {
         verified: false,
         status: 'active',
       });
+
+      try {
+        await referralService.ensureCode(user._id, 'employer');
+        await referralService.creditOnSignup({
+          newUserId: user._id,
+          newUserRole: 'employer',
+          referralCode: input.referralCode,
+        });
+      } catch (referralError) {
+        console.error('[referral] employer signup attribution failed', referralError);
+      }
 
       const { accessToken, sessionId } = await authSessionService.createAccessToken(
         user._id.toString(),

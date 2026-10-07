@@ -35,6 +35,7 @@ export { RoleAd } from './RoleAd';
 export type { IRoleAd, RoleAdModel } from './RoleAd';
 
 export { RoleAdClick } from './RoleAdClick';
+export { ReferralCode, PointWallet, ReferralCredit } from './Referral';
 export type { IRoleAdClick, RoleAdClickModel } from './RoleAdClick';
 
 export { FaqItem } from './FaqItem';
