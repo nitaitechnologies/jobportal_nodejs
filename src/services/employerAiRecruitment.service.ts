@@ -481,11 +481,16 @@ export class EmployerAiRecruitmentService {
 
   /** 297 — Suggest / rank candidates for a JD (AI insights on). */
   async suggestCandidates(employer: AuthenticatedEmployer, input: SuggestCandidatesInput) {
-    const matches = await employerAiMatchingService.listMatchesForJob(employer, input.jobId, {
-      limit: input.limit,
-      minScore: input.minScore,
-      withAiInsights: true,
-    });
+    const matches = await employerAiMatchingService.listMatchesForJob(
+      employer,
+      input.jobId,
+      {
+        limit: input.limit,
+        minScore: input.minScore,
+        withAiInsights: true,
+      },
+      'aiCandidateSuggestEnabled',
+    );
 
     return {
       ...matches,

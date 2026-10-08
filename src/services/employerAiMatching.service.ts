@@ -11,6 +11,7 @@ import {
   type JobMatchSource,
   type MatchBreakdown,
 } from '../utils/matchScore';
+import { isAiFeatureEnabled } from '../utils/featureFlags';
 import { openAiService } from './openai.service';
 
 export const EMPLOYER_AI_MATCH_LABEL = 'AI-generated';
@@ -160,11 +161,13 @@ export class EmployerAiMatchingService {
     employer: AuthenticatedEmployer,
     jobId: string,
     query: EmployerJobMatchQuery = {},
+    aiGate: 'aiEmployerMatchingEnabled' | 'aiCandidateSuggestEnabled' = 'aiEmployerMatchingEnabled',
   ) {
     const job = await this.ownedJob(employer, jobId);
+    const aiEnabled = await isAiFeatureEnabled(aiGate);
     const minScore = query.minScore ?? 40;
     const limit = Math.min(50, Math.max(1, query.limit ?? 20));
-    const withAi = query.withAiInsights === true;
+    const withAi = aiEnabled && query.withAiInsights === true;
 
     const candidates = await Candidate.find({
       profileVisibility: { $in: ['public', 'employers_only'] },
@@ -285,6 +288,7 @@ Be factual from provided scores and skills. Never invent employers, employers' c
               bannerText: 'JD-based candidate ranking',
             },
           }),
+      aiEnabled,
       purpose: 'employer_candidate_matching' as const,
       job: {
         id: job._id.toString(),
@@ -320,8 +324,9 @@ Be factual from provided scores and skills. Never invent employers, employers' c
 
     const match = scoreJobMatch(jobToMatchSource(job), candidateToMatchSource(candidate));
     const serialized = serializeMatch(match);
+    const aiEnabled = await isAiFeatureEnabled('aiEmployerMatchingEnabled');
 
-    if (!openAiService.isConfigured()) {
+    if (!aiEnabled || !openAiService.isConfigured()) {
       return {
         aiGenerated: false as const,
         aiLabel: null,

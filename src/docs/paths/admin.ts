@@ -22,6 +22,24 @@ function adminGet(
 }
 
 export const adminPaths: OpenAPIV3.PathsObject = {
+  '/api/v1/admin/ai-features': {
+    get: adminGet(
+      'listAdminAiFeatures',
+      'Admin Settings',
+      'List AI feature toggles',
+      'settings.read',
+    ),
+    patch: op({
+      operationId: 'updateAdminAiFeatures',
+      tags: ['Admin Settings'],
+      summary: 'Enable or disable AI features',
+      description:
+        'Requires `settings.update`. Body is a partial map of feature keys to booleans, for example `{ "aiEmployerMatchingEnabled": false }`. Effective flags are also returned on candidate, employer, and admin `/me`.',
+      requestBody: jsonBody(obj),
+      data: obj,
+      errors: ['400', '401', '403'],
+    }),
+  },
   // Settings
   '/api/v1/admin/settings': {
     get: adminGet('listAdminSettings', 'Admin Settings', 'List platform settings', 'settings.read', [

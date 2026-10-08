@@ -625,6 +625,27 @@ export class JobAlertService {
     return { sent, scanned: scored.length };
   }
 
+  /**
+   * Boost turn-on: notify matching candidates in-app and record the send.
+   * Does not charge wallet credits — the boost/feature action already did.
+   */
+  async recordBoostMatchNotifications(
+    jobId: string | mongoose.Types.ObjectId,
+  ): Promise<{ sent: number; scanned: number }> {
+    const result = await this.notifyMatchingCandidatesForBoost(jobId, {
+      minScore: 60,
+      limit: 40,
+    });
+    await Job.updateOne(
+      { _id: jobId },
+      {
+        $set: { boostNotifySentAt: new Date() },
+        $inc: { boostNotifyCount: result.sent },
+      },
+    );
+    return result;
+  }
+
   /** Full scheduled pass: digests + deadlines. */
   async runScheduledPass(): Promise<{
     digests: { daily: number; weekly: number; preference: number };

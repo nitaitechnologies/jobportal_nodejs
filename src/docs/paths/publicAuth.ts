@@ -359,6 +359,8 @@ export const publicAndAuthPaths: OpenAPIV3.PathsObject = {
       operationId: 'candidateMe',
       tags: ['Candidate Auth'],
       summary: 'Current candidate session',
+      description:
+        'Includes `features` for web and mobile. Hide an AI action when its flag is false (aiResumeEnabled, aiMatchingEnabled, aiCareerCoachEnabled, and the shared employer flags).',
       data: obj,
       errors: ['401', '403'],
     }),
@@ -404,6 +406,8 @@ export const publicAndAuthPaths: OpenAPIV3.PathsObject = {
       operationId: 'employerMe',
       tags: ['Employer Auth'],
       summary: 'Current employer session',
+      description:
+        'Includes `features`. Hide employer AI matching and each assistant tool when its flag is false. Same payload shape as candidate and admin /me.',
       data: obj,
       errors: ['401', '403'],
     }),
@@ -433,6 +437,8 @@ export const publicAndAuthPaths: OpenAPIV3.PathsObject = {
       operationId: 'adminMe',
       tags: ['Admin Auth'],
       summary: 'Current admin session',
+      description:
+        'Includes the same `features` object as candidate and employer /me so every client shares one AI config.',
       data: obj,
       errors: ['401', '403'],
     }),

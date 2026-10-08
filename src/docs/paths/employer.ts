@@ -231,9 +231,9 @@ export const employerPaths: OpenAPIV3.PathsObject = {
     patch: op({
       operationId: 'featureEmployerJob',
       tags: ['Employer Jobs'],
-      summary: 'Toggle featured flag',
+      summary: 'Boost / toggle featured flag',
       description:
-        'Body: `{ featured: boolean }`. Requires plan entitlement and respects featuredJobLimit.',
+        'Body: `{ featured: boolean }`. Turning featured on boosts a published job and sends an in-app notification to matching candidates. Uses a plan featured slot, or wallet credits when the slot limit is used up.',
       parameters: [idParam()],
       requestBody: jsonBody(obj),
       data: obj,

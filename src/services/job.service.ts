@@ -1271,6 +1271,12 @@ export class JobService {
         employerId: job.employerId,
         metadata: { featured: true, urgent: Boolean(job.urgent) },
       });
+      try {
+        await jobAlertService.recordBoostMatchNotifications(job._id);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : 'unknown error';
+        console.error(`[job-alerts] boost match notify failed: ${reason}`);
+      }
       void jobAlertService.onJobHotFlagged(job._id).catch(() => undefined);
     }
 

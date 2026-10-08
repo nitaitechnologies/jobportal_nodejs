@@ -286,8 +286,16 @@ export class AdminJobModerationService {
       },
     });
 
-    const becameHot =
-      (!previous.featured && job.featured) || (!previous.urgent && job.urgent);
+    const becameFeatured = !previous.featured && job.featured;
+    const becameHot = becameFeatured || (!previous.urgent && job.urgent);
+    if (becameFeatured && job.status === 'published') {
+      try {
+        await jobAlertService.recordBoostMatchNotifications(job._id);
+      } catch (error: unknown) {
+        const reason = error instanceof Error ? error.message : 'unknown error';
+        console.error(`[job-alerts] boost match notify failed: ${reason}`);
+      }
+    }
     if (becameHot) {
       void jobAlertService.onJobHotFlagged(job._id).catch((error: unknown) => {
         const reason = error instanceof Error ? error.message : 'unknown error';

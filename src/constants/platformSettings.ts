@@ -1,3 +1,4 @@
+import { AI_FEATURE_CATALOG } from './aiFeatures';
 import type { SettingValueType } from './enums';
 
 export const SETTING_GROUPS = [
@@ -12,6 +13,7 @@ export const SETTING_GROUPS = [
   'seo',
   'analytics',
   'maintenance',
+  'ai',
 ] as const;
 export type SettingGroup = (typeof SETTING_GROUPS)[number];
 
@@ -277,6 +279,18 @@ export const DEFAULT_PLATFORM_SETTINGS: readonly DefaultPlatformSetting[] = [
     isActive: true,
     isEditable: true,
   },
+  ...AI_FEATURE_CATALOG.map(
+    (item): DefaultPlatformSetting => ({
+      key: item.settingKey,
+      value: true,
+      type: 'boolean',
+      group: 'ai',
+      description: item.description,
+      isPublic: false,
+      isActive: true,
+      isEditable: true,
+    }),
+  ),
 ];
 
 export const SETTING_KEYS = DEFAULT_PLATFORM_SETTINGS.map((s) => s.key);

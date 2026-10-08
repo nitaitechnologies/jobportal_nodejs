@@ -35,8 +35,8 @@ export interface AdminProfileResult {
   features: FeatureFlags;
 }
 
-function withFeatures<T extends object>(payload: T): T & { features: FeatureFlags } {
-  return { ...payload, features: getFeatureFlags() };
+async function withFeatures<T extends object>(payload: T): Promise<T & { features: FeatureFlags }> {
+  return { ...payload, features: await getFeatureFlags() };
 }
 
 export class AdminAuthService {
@@ -83,7 +83,7 @@ export class AdminAuthService {
       entityId: user._id,
     });
 
-    return withFeatures({
+    return await withFeatures({
       accessToken,
       admin: {
         id: adminUser._id.toString(),
@@ -108,7 +108,7 @@ export class AdminAuthService {
       throw new AppError('Admin access denied', HTTP_STATUS.FORBIDDEN);
     }
 
-    return withFeatures({
+    return await withFeatures({
       admin: {
         id: adminUser._id.toString(),
         userId: user._id.toString(),

@@ -29,6 +29,8 @@ const employerTeamInviteSchema = new Schema(
       enum: ['hr', 'recruiter'],
       required: true,
     },
+    /** Department this staff member will handle (e.g. Development, Marketing). */
+    department: { type: String, trim: true, default: '', maxlength: 120 },
     token: {
       type: String,
       required: true,

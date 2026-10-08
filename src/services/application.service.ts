@@ -6,6 +6,7 @@ import { Application } from '../models/Application';
 import { Candidate } from '../models/Candidate';
 import { Category } from '../models/Category';
 import { Company } from '../models/Company';
+import { Employer } from '../models/Employer';
 import { Job } from '../models/Job';
 import { Location } from '../models/Location';
 import { MediaFile } from '../models/MediaFile';
@@ -30,6 +31,7 @@ import {
   resolveEmployerUserId,
 } from './notification.service';
 import { trackSafely } from './analytics.service';
+import { sendEmail } from './email.service';
 import { candidateSafetyService } from './candidateSafety.service';
 import type {
   ApplicationApplyInput,
@@ -43,7 +45,6 @@ import type {
   EmployerApplicationQuery,
   EmployerApplicationStatsQuery,
 } from '../validators/application.validator';
-import { Employer } from '../models/Employer';
 import { chatService } from './chat.service';
 
 async function resolveEmployerActorName(employer: AuthenticatedEmployer): Promise<string> {
@@ -52,6 +53,14 @@ async function resolveEmployerActorName(employer: AuthenticatedEmployer): Promis
     Employer.findById(employer.employerId).select('designation'),
   ]);
   return user?.name?.trim() || profile?.designation?.trim() || 'Hiring team';
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function pushStatusHistory(
@@ -567,6 +576,85 @@ export class ApplicationService {
     }
   }
 
+  /**
+   * Company inbox: in-app alert for the poster, owners, and assigned staff,
+   * plus one email to each of those addresses and the company contact email.
+   */
+  private async notifyCompanyOfApplication(
+    candidate: AuthenticatedCandidate,
+    job: {
+      _id: mongoose.Types.ObjectId;
+      title: string;
+      companyId: mongoose.Types.ObjectId;
+      employerId: mongoose.Types.ObjectId;
+    },
+    applicationId: string,
+  ) {
+    const jobDoc = await Job.findById(job._id).select('assignedEmployerIds employerId');
+    const company = await Company.findById(job.companyId).select('name contactEmail');
+
+    const employerIds = new Set<string>();
+    if (job.employerId) employerIds.add(job.employerId.toString());
+    for (const id of jobDoc?.assignedEmployerIds ?? []) {
+      employerIds.add(id.toString());
+    }
+
+    const [handlers, owners] = await Promise.all([
+      employerIds.size
+        ? Employer.find({
+            _id: { $in: [...employerIds].map((id) => new mongoose.Types.ObjectId(id)) },
+            status: 'active',
+          }).select('userId')
+        : Promise.resolve([]),
+      Employer.find({
+        companyId: job.companyId,
+        status: 'active',
+        teamRole: 'owner',
+      }).select('userId'),
+    ]);
+
+    const userIds = [
+      ...new Set([...handlers, ...owners].map((row) => row.userId.toString())),
+    ];
+
+    await Promise.all(
+      userIds.map((userId) =>
+        notifySafely({
+          recipientId: userId,
+          type: 'APPLICATION_SUBMITTED',
+          title: 'New Application Received',
+          message: `${candidate.name} applied to "${job.title}".`,
+          inAppOnly: true,
+          data: {
+            applicationId,
+            jobId: job._id.toString(),
+            candidateId: candidate.candidateId,
+          },
+        }),
+      ),
+    );
+
+    const users = userIds.length
+      ? await User.find({ _id: { $in: userIds } }).select('email')
+      : [];
+    const emails = new Set<string>();
+    const contact = company?.contactEmail?.trim().toLowerCase();
+    if (contact?.includes('@')) emails.add(contact);
+    for (const user of users) {
+      const email = user.email?.trim().toLowerCase();
+      if (email?.includes('@')) emails.add(email);
+    }
+
+    const companyName = company?.name?.trim() || 'your company';
+    const subject = `New application for ${job.title}`;
+    const text = `${candidate.name} applied to "${job.title}" at ${companyName}. Sign in to review the application.`;
+    const html = `<p><strong>${escapeHtml(candidate.name)}</strong> applied to <strong>${escapeHtml(job.title)}</strong> at ${escapeHtml(companyName)}.</p><p>Sign in to your employer account to review the application.</p>`;
+
+    await Promise.all(
+      [...emails].map((to) => sendEmail({ to, subject, text, html })),
+    );
+  }
+
   private async finalizeApplySuccess(
     candidate: AuthenticatedCandidate,
     job: {
@@ -628,20 +716,10 @@ export class ApplicationService {
       ...(metadata ? { metadata } : {}),
     });
 
+    await this.notifyCompanyOfApplication(candidate, job, application._id.toString());
+
     const employerUserId = await resolveEmployerUserId(job.employerId);
     if (employerUserId) {
-      await notifySafely({
-        recipientId: employerUserId,
-        type: 'APPLICATION_SUBMITTED',
-        title: 'New Application Received',
-        message: `A candidate has applied to your job "${job.title}".`,
-        data: {
-          applicationId: application._id.toString(),
-          jobId: job._id.toString(),
-          candidateId: candidate.candidateId,
-        },
-      });
-
       // 309 — high-fit new applicant also surfaces as matching candidate.
       const matchPct =
         typeof metadata?.matchPercentage === 'number' ? metadata.matchPercentage : null;

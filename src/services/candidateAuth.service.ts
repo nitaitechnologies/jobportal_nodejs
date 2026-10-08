@@ -16,7 +16,7 @@ import type {
   CandidatePasswordResetInput,
   CandidateRegisterInput,
 } from '../validators/candidateAuth.validator';
-import { getFeatureFlags } from '../utils/featureFlags';
+import { getFeatureFlags, type FeatureFlags } from '../utils/featureFlags';
 import { trackSafely } from './analytics.service';
 import { otpService } from './otp.service';
 import { passwordResetService } from './passwordReset.service';
@@ -38,34 +38,26 @@ export interface CandidateAuthResult {
     profileCompletion: number;
     profileVisibility?: string;
   };
-  features: {
-    videoJdEnabled: boolean;
-    videoResumeEnabled: boolean;
-    videoMaxBytes: number;
-    videoMaxSeconds: number;
-    aiResumeEnabled: boolean;
-    aiMatchingEnabled: boolean;
-    aiCareerCoachEnabled: boolean;
-    aiRecruitmentEnabled: boolean;
-    chatEnabled: boolean;
-  };
+  features: FeatureFlags;
   /** Present on OTP verify — true when a new account was created. */
   isNewUser?: boolean;
 }
 
-function withFeatures<T extends object>(payload: T): T & { features: CandidateAuthResult['features'] } {
-  return { ...payload, features: getFeatureFlags() };
+async function withFeatures<T extends object>(
+  payload: T,
+): Promise<T & { features: FeatureFlags }> {
+  return { ...payload, features: await getFeatureFlags() };
 }
 
 function otpPlaceholderEmail(phone: string): string {
   return `otp.${phone}@workindia.local`;
 }
 
-function buildAuthPayload(
+async function buildAuthPayload(
   user: { _id: { toString(): string }; name: string; email: string; phone: string },
   candidate: { _id: { toString(): string }; profileCompletion?: number | null; profileVisibility?: string },
   extras?: { isNewUser?: boolean },
-): CandidateAuthResult {
+): Promise<CandidateAuthResult> {
   const accessToken = signAccessToken({
     userId: user._id.toString(),
     role: 'candidate',
@@ -136,7 +128,7 @@ export class CandidateAuthService {
         console.error('[referral] candidate signup attribution failed', referralError);
       }
 
-      return buildAuthPayload(user, candidate);
+      return await buildAuthPayload(user, candidate);
     } catch (error) {
       if (createdUserId) {
         await User.deleteOne({ _id: createdUserId }).catch(() => undefined);
@@ -190,7 +182,7 @@ export class CandidateAuthService {
       candidateId: candidate._id,
     });
 
-    return buildAuthPayload(user, candidate);
+    return await buildAuthPayload(user, candidate);
   }
 
   async sendOtp(
@@ -250,7 +242,7 @@ export class CandidateAuthService {
         candidateId: candidate._id,
       });
 
-      return buildAuthPayload(existing, candidate, { isNewUser: false });
+      return await buildAuthPayload(existing, candidate, { isNewUser: false });
     }
 
     const passwordHash = await hashPassword(randomBytes(32).toString('hex'));
@@ -297,7 +289,7 @@ export class CandidateAuthService {
         candidateId: candidate._id,
       });
 
-      return buildAuthPayload(user, candidate, { isNewUser: true });
+      return await buildAuthPayload(user, candidate, { isNewUser: true });
     } catch (error) {
       if (createdUserId) {
         await User.deleteOne({ _id: createdUserId }).catch(() => undefined);
@@ -440,7 +432,7 @@ export class CandidateAuthService {
       throw new AppError('Candidate access denied', HTTP_STATUS.FORBIDDEN);
     }
 
-    return withFeatures({
+    return await withFeatures({
       user: {
         id: user._id.toString(),
         name: user.name,

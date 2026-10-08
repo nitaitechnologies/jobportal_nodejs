@@ -53,6 +53,7 @@ export class EmployerTeamService {
           phone: user?.phone ?? '',
           teamRole,
           designation: item.designation || designationForRole(teamRole),
+          department: item.department || '',
           permissions: permissionsForTeamRole(teamRole),
           verified: Boolean(item.verified),
           phoneVerified: Boolean(user?.phoneVerified),
@@ -77,6 +78,7 @@ export class EmployerTeamService {
         email: invite.email,
         name: invite.name || '',
         teamRole: invite.teamRole,
+        department: invite.department || '',
         expiresAt: invite.expiresAt,
         createdAt: invite.createdAt,
         token: invite.token,
@@ -86,7 +88,7 @@ export class EmployerTeamService {
 
   async invite(
     employer: AuthenticatedEmployer,
-    input: { email: string; name?: string; teamRole: 'hr' | 'recruiter' },
+    input: { email: string; name?: string; teamRole: 'hr' | 'recruiter'; department?: string },
   ) {
     const email = input.email.trim().toLowerCase();
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -124,6 +126,7 @@ export class EmployerTeamService {
       email,
       name: (input.name ?? '').trim(),
       teamRole: input.teamRole,
+      department: (input.department ?? '').trim(),
       expiresAt,
       status: 'pending',
     });
@@ -136,8 +139,8 @@ export class EmployerTeamService {
       action: 'team.invite',
       entityType: 'invite',
       entityId: invite._id.toString(),
-      summary: `Invited ${email} as ${input.teamRole}`,
-      metadata: { email, teamRole: input.teamRole },
+      summary: `Invited ${email} as ${input.teamRole}${input.department?.trim() ? ` (${input.department.trim()})` : ''}`,
+      metadata: { email, teamRole: input.teamRole, department: (input.department ?? '').trim() },
     });
 
     return {
@@ -146,6 +149,7 @@ export class EmployerTeamService {
         email: invite.email,
         name: invite.name || '',
         teamRole: invite.teamRole,
+        department: invite.department || '',
         expiresAt: invite.expiresAt,
         token: invite.token,
         acceptPath: `/employer/team/accept?token=${invite.token}`,
@@ -238,6 +242,7 @@ export class EmployerTeamService {
       companyId: company._id,
       teamRole,
       designation: designationForRole(teamRole),
+      department: invite.department || '',
       verified: false,
       status: 'active',
     });
@@ -286,6 +291,7 @@ export class EmployerTeamService {
         companyId: company._id.toString(),
         teamRole,
         designation: member.designation,
+        department: member.department || '',
         permissions: permissionsForTeamRole(teamRole),
         verified: false,
       },
@@ -296,7 +302,7 @@ export class EmployerTeamService {
         verificationStatus: company.verificationStatus,
         status: company.status,
       },
-      features: getFeatureFlags(),
+      features: await getFeatureFlags(),
     };
   }
 
@@ -390,6 +396,37 @@ export class EmployerTeamService {
     });
 
     return { removed: true };
+  }
+
+  async updateMemberDepartment(
+    employer: AuthenticatedEmployer,
+    memberId: string,
+    department: string,
+  ) {
+    if (!mongoose.Types.ObjectId.isValid(memberId)) {
+      throw new AppError('Team member not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const member = await Employer.findOne({
+      _id: memberId,
+      companyId: employer.companyId,
+      status: 'active',
+    });
+    if (!member) {
+      throw new AppError('Team member not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    member.department = department.trim();
+    await member.save();
+
+    return {
+      member: {
+        id: member._id.toString(),
+        teamRole: member.teamRole,
+        designation: member.designation || '',
+        department: member.department || '',
+      },
+    };
   }
 }
 

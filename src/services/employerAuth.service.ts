@@ -14,7 +14,7 @@ import type {
   EmployerRegisterInput,
   EmployerVerifyOtpInput,
 } from '../validators/employerAuth.validator';
-import { getFeatureFlags } from '../utils/featureFlags';
+import { getFeatureFlags, type FeatureFlags } from '../utils/featureFlags';
 import { trackSafely } from './analytics.service';
 import { authSessionService, type SessionDeviceMeta } from './authSession.service';
 import { otpService } from './otp.service';
@@ -49,23 +49,13 @@ export interface EmployerAuthResult {
     verificationStatus: string;
     status?: string;
   };
-  features: {
-    videoJdEnabled: boolean;
-    videoResumeEnabled: boolean;
-    videoMaxBytes: number;
-    videoMaxSeconds: number;
-    aiResumeEnabled: boolean;
-    aiMatchingEnabled: boolean;
-    aiCareerCoachEnabled: boolean;
-    aiRecruitmentEnabled: boolean;
-    chatEnabled: boolean;
-  };
+  features: FeatureFlags;
 }
 
-function withFeatures<T extends object>(
+async function withFeatures<T extends object>(
   payload: T,
-): T & { features: EmployerAuthResult['features'] } {
-  return { ...payload, features: getFeatureFlags() };
+): Promise<T & { features: FeatureFlags }> {
+  return { ...payload, features: await getFeatureFlags() };
 }
 
 function resolveTeamRole(input: EmployerRegisterInput): EmployerTeamRole {
@@ -107,7 +97,7 @@ function mapAuthPayload(
   },
   accessToken: string,
   sessionId?: string,
-): EmployerAuthResult {
+): Promise<EmployerAuthResult> {
   const teamRole = (employer.teamRole as EmployerTeamRole) || 'owner';
   return withFeatures({
     accessToken,
@@ -215,7 +205,7 @@ export class EmployerAuthService {
         { maxSessions: env.employerMaxSessions },
       );
 
-      return mapAuthPayload(user, employer, company, accessToken, sessionId);
+      return await mapAuthPayload(user, employer, company, accessToken, sessionId);
     } catch (error) {
       if (createdUserId) {
         await Employer.deleteOne({ userId: createdUserId }).catch(() => undefined);
@@ -286,7 +276,7 @@ export class EmployerAuthService {
       companyId: company._id,
     });
 
-    return mapAuthPayload(user, employer, company, accessToken, sessionId);
+    return await mapAuthPayload(user, employer, company, accessToken, sessionId);
   }
 
   async getProfile(userId: string): Promise<Omit<EmployerAuthResult, 'accessToken' | 'sessionId'>> {
@@ -308,7 +298,7 @@ export class EmployerAuthService {
       throw new AppError('Employer not found', HTTP_STATUS.NOT_FOUND);
     }
 
-    const mapped = mapAuthPayload(user, employer, company, '');
+    const mapped = await mapAuthPayload(user, employer, company, '');
     const { accessToken: _token, sessionId: _sid, ...rest } = mapped;
     return rest;
   }

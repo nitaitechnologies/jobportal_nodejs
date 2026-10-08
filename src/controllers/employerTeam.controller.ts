@@ -6,6 +6,7 @@ import { sendSuccess } from '../utils/apiResponse';
 import type {
   EmployerTeamAcceptInput,
   EmployerTeamInviteInput,
+  EmployerTeamDepartmentUpdateInput,
   EmployerTeamRoleUpdateInput,
 } from '../validators/employerTeam.validator';
 import '../types/express';
@@ -79,6 +80,24 @@ export class EmployerTeamController {
         body.teamRole,
       );
       sendSuccess(res, result, 'Role updated');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateDepartment(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.employer) {
+        throw new AppError('Employer access required', HTTP_STATUS.FORBIDDEN);
+      }
+      const body = req.body as EmployerTeamDepartmentUpdateInput;
+      const id = typeof req.params.id === 'string' ? req.params.id : '';
+      const result = await employerTeamService.updateMemberDepartment(
+        req.employer,
+        id,
+        body.department,
+      );
+      sendSuccess(res, result, 'Department updated');
     } catch (error) {
       next(error);
     }

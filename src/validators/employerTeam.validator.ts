@@ -6,6 +6,7 @@ export const employerTeamInviteSchema = z
     email: z.string().trim().email().max(200),
     name: z.string().trim().max(120).optional(),
     teamRole: z.enum(['hr', 'recruiter']),
+    department: z.string().trim().max(120).optional(),
   })
   .strict();
 
@@ -36,6 +37,13 @@ export const employerTeamRoleUpdateSchema = z
   })
   .strict();
 
+export const employerTeamDepartmentUpdateSchema = z
+  .object({
+    department: z.string().trim().max(120),
+  })
+  .strict();
+
 export type EmployerTeamInviteInput = z.infer<typeof employerTeamInviteSchema>;
 export type EmployerTeamAcceptInput = z.infer<typeof employerTeamAcceptSchema>;
 export type EmployerTeamRoleUpdateInput = z.infer<typeof employerTeamRoleUpdateSchema>;
+export type EmployerTeamDepartmentUpdateInput = z.infer<typeof employerTeamDepartmentUpdateSchema>;

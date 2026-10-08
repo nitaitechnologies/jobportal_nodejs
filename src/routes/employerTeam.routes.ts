@@ -13,6 +13,7 @@ import { requireRole } from '../middlewares/role.middleware';
 import { validateBody } from '../middlewares/validate.middleware';
 import { parseRequestSchema } from '../utils/validation';
 import {
+  employerTeamDepartmentUpdateSchema,
   employerTeamInviteSchema,
   employerTeamRoleUpdateSchema,
 } from '../validators/employerTeam.validator';
@@ -54,6 +55,16 @@ employerTeamRouter.delete(
   validateObjectIdParam('id'),
   (req, res, next) => {
     void employerTeamController.revokeInvite(req, res, next);
+  },
+);
+
+employerTeamRouter.patch(
+  '/:id/department',
+  requireEmployerPermission(EMPLOYER_PERMISSIONS.TEAM_MANAGE),
+  validateObjectIdParam('id'),
+  validateBody(employerTeamDepartmentUpdateSchema),
+  (req, res, next) => {
+    void employerTeamController.updateDepartment(req, res, next);
   },
 );
 
