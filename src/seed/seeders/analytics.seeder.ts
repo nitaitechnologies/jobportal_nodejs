@@ -1,3 +1,4 @@
+import { env } from '../../config/env';
 import { AnalyticsEvent } from '../../models/AnalyticsEvent';
 import type { AnalyticsActorRole, AnalyticsEntityType, AnalyticsEventType } from '../../constants/enums';
 import { SEED_COUNTS, SEED_META_FLAG } from '../config';
@@ -90,7 +91,7 @@ export async function seedAnalytics(ctx: SeedContext): Promise<void> {
       },
       sessionId: `demo-session-${(i % 80) + 1}`,
       ipHash: '',
-      userAgent: 'WorkIndiaDemoSeeder/1.0',
+      userAgent: `${env.appName}DemoSeeder/1.0`,
       occurredAt: analyticsOccurredAt(rng, 90),
     });
   }

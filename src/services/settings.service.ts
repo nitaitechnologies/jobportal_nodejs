@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { HTTP_STATUS } from '../constants';
+import { env } from '../config/env';
 import type { SettingValueType } from '../constants/enums';
 import {
   DEFAULT_PLATFORM_SETTINGS,
@@ -72,14 +73,40 @@ function defaultFor(key: string) {
   return DEFAULT_PLATFORM_SETTINGS.find((s) => s.key === key);
 }
 
+const LEGACY_APP_NAMES = new Set(['WorkIndia', 'RozgarHub']);
+
 /**
- * Insert missing default settings. Idempotent — never overwrites existing values.
+ * Insert missing default settings. Idempotent — never overwrites admin-edited values.
+ * Replaces leftover WorkIndia / RozgarHub brand defaults with APP_NAME from the environment.
  */
 export async function ensureDefaultSettings(): Promise<{ created: number }> {
   let created = 0;
   for (const def of DEFAULT_PLATFORM_SETTINGS) {
-    const existing = await PlatformSetting.findOne({ key: def.key }).select('_id');
-    if (existing) continue;
+    const existing = await PlatformSetting.findOne({ key: def.key });
+    if (existing) {
+      const current = existing.value;
+      let nextValue: unknown;
+      if (def.key === 'general.appName' && LEGACY_APP_NAMES.has(String(current))) {
+        nextValue = env.appName;
+      } else if (
+        def.key === 'general.supportEmail' &&
+        String(current) === 'support@workindia.local'
+      ) {
+        nextValue = env.supportEmail;
+      } else if (
+        def.key === 'platform.maintenance.message' &&
+        typeof current === 'string' &&
+        /WorkIndia|RozgarHub/.test(current)
+      ) {
+        nextValue = current.replace(/WorkIndia|RozgarHub/g, env.appName);
+      }
+      if (nextValue !== undefined && nextValue !== current) {
+        existing.value = nextValue;
+        await existing.save();
+        invalidateCache(def.key);
+      }
+      continue;
+    }
     await PlatformSetting.create({
       key: def.key,
       value: def.value,

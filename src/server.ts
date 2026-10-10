@@ -13,10 +13,10 @@ async function gracefulShutdown(signal: string): Promise<void> {
     return;
   }
   shuttingDown = true;
-  console.log(`[workindia-api] Received ${signal}; shutting down…`);
+  console.log(`[${env.serviceName}] Received ${signal}; shutting down…`);
 
   const forceTimer = setTimeout(() => {
-    console.error('[workindia-api] Forced exit after shutdown timeout');
+    console.error(`[${env.serviceName}] Forced exit after shutdown timeout`);
     process.exit(1);
   }, 10_000);
   forceTimer.unref();
@@ -34,11 +34,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
       });
     }
     await disconnectDatabase();
-    console.log('[workindia-api] Shutdown complete');
+    console.log(`[${env.serviceName}] Shutdown complete`);
     process.exit(0);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown error';
-    console.error('[workindia-api] Shutdown error:', message);
+    console.error(`[${env.serviceName}] Shutdown error:`, message);
     process.exit(1);
   }
 }
@@ -49,11 +49,11 @@ async function startServer(): Promise<void> {
   try {
     const { created } = await ensureDefaultSettings();
     if (created > 0) {
-      console.log(`[workindia-api] Seeded ${created} default platform setting(s)`);
+      console.log(`[${env.serviceName}] Seeded ${created} default platform setting(s)`);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown error';
-    console.error('[workindia-api] ensureDefaultSettings failed:', message);
+    console.error(`[${env.serviceName}] ensureDefaultSettings failed:`, message);
   }
 
   const app = createApp();
@@ -67,23 +67,23 @@ async function startServer(): Promise<void> {
 
   httpServer.on('listening', () => {
     console.log(
-      `[workindia-api] Server running in ${env.nodeEnv} mode on ${HOST}:${PORT}`,
+      `[${env.serviceName}] Server running in ${env.nodeEnv} mode on ${HOST}:${PORT}`,
     );
     console.log(
-      `[workindia-api] Health: ${env.apiPrefix}/health`,
+      `[${env.serviceName}] Health: ${env.apiPrefix}/health`,
     );
     if (env.enableApiDocs) {
-      console.log('[workindia-api] API docs: /api/docs');
+      console.log(`[${env.serviceName}] API docs: /api/docs`);
     }
   });
 
   httpServer.on('error', (error: NodeJS.ErrnoException) => {
     if (error.code === 'EADDRINUSE') {
       console.error(
-        `[workindia-api] Port ${PORT} is already in use. Set a free PORT in .env.`,
+        `[${env.serviceName}] Port ${PORT} is already in use. Set a free PORT in .env.`,
       );
     } else {
-      console.error('[workindia-api] Server error:', error.message);
+      console.error(`[${env.serviceName}] Server error:`, error.message);
     }
     process.exit(1);
   });
@@ -96,18 +96,18 @@ async function startServer(): Promise<void> {
   });
 
   process.on('unhandledRejection', (reason) => {
-    console.error('[workindia-api] Unhandled Rejection:', reason);
+    console.error(`[${env.serviceName}] Unhandled Rejection:`, reason);
     void gracefulShutdown('unhandledRejection');
   });
 
   process.on('uncaughtException', (error) => {
-    console.error('[workindia-api] Uncaught Exception:', error);
+    console.error(`[${env.serviceName}] Uncaught Exception:`, error);
     void gracefulShutdown('uncaughtException');
   });
 }
 
 startServer().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : 'Unknown startup error';
-  console.error('[workindia-api] Unable to start server:', message);
+  console.error(`[${env.serviceName}] Unable to start server:`, message);
   process.exit(1);
 });

@@ -37,7 +37,7 @@ export function createDocsRouter(): Router {
         filter: true,
         tryItOutEnabled: true,
       },
-      customSiteTitle: 'WorkIndia API Docs',
+      customSiteTitle: `${env.appName} API Docs`,
       customCss: '.swagger-ui .topbar { display: none }',
     }),
   );

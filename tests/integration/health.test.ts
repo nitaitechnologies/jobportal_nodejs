@@ -8,7 +8,7 @@ describe('Health & base API', () => {
       success: true,
       message: expect.any(String),
       data: {
-        service: 'workindia-api',
+        service: 'jobdeddy-api',
         database: 'connected',
       },
     });

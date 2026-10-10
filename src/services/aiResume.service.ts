@@ -1,4 +1,5 @@
 import { HTTP_STATUS } from '../constants';
+import { env } from '../config/env';
 import { Candidate } from '../models/Candidate';
 import { Company } from '../models/Company';
 import { Job } from '../models/Job';
@@ -231,7 +232,7 @@ function profileSnapshot(
   };
 }
 
-const SYSTEM_PROMPT = `You are a professional resume writer for the Indian job market (WorkIndia).
+const SYSTEM_PROMPT = `You are a professional resume writer for the Indian job market (${env.appName}).
 Return ONLY valid JSON with this shape:
 {
   "resume": {

@@ -1,3 +1,4 @@
+import { env } from '../../config/env';
 import { slugify } from '../../utils/slug';
 
 export interface ArticleSeedDef {
@@ -174,7 +175,7 @@ export function articleBody(title: string, excerpt: string): string {
     '## Action checklist',
     '',
     '1. Clarify your target role, city preference, and salary band before applying.',
-    '2. Keep resume, LinkedIn, and WorkIndia profile language consistent.',
+    `2. Keep resume, LinkedIn, and ${env.appName} profile language consistent.`,
     '3. Practise a 60-second story about your most recent impactful project.',
     '4. Track every application with date, status, and follow-up reminder.',
     '5. After each interview, write three notes: what went well, what to improve, next step.',

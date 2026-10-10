@@ -354,7 +354,7 @@ export class PaymentService {
 
     const invoice = await issueInvoiceForPayment(
       payment,
-      payment.description || 'WorkIndia payment',
+      payment.description || `${env.appName} payment`,
     );
 
     await notifySafely({
@@ -717,8 +717,9 @@ export class PaymentService {
     }
     const amountPaise = Math.round((payment.totalAmount ?? 0) * 100);
     const callbackUrl = `${env.apiPrefix}/payments/gateway/callback`;
+    const checkoutDescription = payment.description || `${env.appName} payment`;
     return `<!doctype html>
-<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pay WorkIndia</title></head>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pay ${env.appName}</title></head>
 <body style="font-family:sans-serif;padding:24px">
 <p id="status">Opening secure checkout…</p>
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
@@ -728,8 +729,8 @@ const options = {
   key: ${JSON.stringify(env.razorpayKeyId)},
   amount: ${amountPaise},
   currency: "INR",
-  name: "WorkIndia",
-  description: ${JSON.stringify(payment.description || 'WorkIndia payment')},
+  name: ${JSON.stringify(env.appName)},
+  description: ${JSON.stringify(checkoutDescription)},
   order_id: ${JSON.stringify(orderId)},
   handler: async function (response) {
     statusEl.textContent = 'Confirming payment…';

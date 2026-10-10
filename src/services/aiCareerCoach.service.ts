@@ -1,4 +1,5 @@
 import { HTTP_STATUS } from '../constants';
+import { env } from '../config/env';
 import { Candidate } from '../models/Candidate';
 import { Company } from '../models/Company';
 import { Job } from '../models/Job';
@@ -128,7 +129,7 @@ export class AiCareerCoachService {
         [
           {
             role: 'system',
-            content: `You are an AI Career Coach for WorkIndia (Indian job market).
+            content: `You are an AI Career Coach for ${env.appName} (Indian job market).
 Return JSON only:
 {
   "coachSummary": "2-3 sentences",

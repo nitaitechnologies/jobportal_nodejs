@@ -1,5 +1,5 @@
 /**
- * WorkIndia demo data seeder entrypoint.
+ * Demo data seeder entrypoint.
  *
  *   npm run seed
  *   npm run seed:reset
@@ -62,7 +62,7 @@ async function runDomain(domain: string, fn: () => Promise<void>): Promise<void>
 
 function printBanner(): void {
   console.log('');
-  console.log('WorkIndia Demo Seed');
+  console.log(`${env.appName} Demo Seed`);
   console.log('');
   console.log(`Environment: ${env.nodeEnv}`);
   console.log(`Mode: ${SEED_MODE}`);
@@ -187,7 +187,7 @@ async function runResetOnly(): Promise<void> {
   console.log('');
   await connectOrThrow();
   const counts = await resetDemoData();
-  console.log('WorkIndia Demo Reset');
+  console.log(`${env.appName} Demo Reset`);
   console.log('');
   for (const [key, value] of Object.entries(counts)) {
     console.log(`  ${key}: ${value}`);

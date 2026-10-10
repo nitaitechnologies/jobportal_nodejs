@@ -31,7 +31,7 @@ async function main(): Promise<void> {
 
   const email = (readArg('email') ?? '').trim().toLowerCase();
   const password = readArg('password') ?? '';
-  const name = (readArg('name') ?? 'WorkIndia Admin').trim();
+  const name = (readArg('name') ?? `${env.appName} Admin`).trim();
   const roleArg = (readArg('role') ?? 'super_admin') as AdminRole;
 
   if (!email || !password) {

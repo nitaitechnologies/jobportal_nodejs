@@ -81,17 +81,17 @@ function buildServers(): OpenAPIV3.ServerObject[] {
 }
 
 /**
- * Build the OpenAPI 3.0 document for WorkIndia API (B1–B25).
+ * Build the OpenAPI 3.0 document (B1–B25).
  * Paths use absolute `/api/v1/...` so the server URL is the host only.
  */
 export function buildOpenApiDocument(): OpenAPIV3.Document {
   return {
     openapi: '3.0.3',
     info: {
-      title: 'WorkIndia API',
+      title: `${env.appName} API`,
       version: '1.0.0',
       description: [
-        'REST API for the WorkIndia job marketplace.',
+        `REST API for the ${env.appName} job marketplace.`,
         '',
         '## Authentication',
         'Use `Authorization: Bearer <accessToken>` from login endpoints.',
@@ -106,7 +106,7 @@ export function buildOpenApiDocument(): OpenAPIV3.Document {
         '- Secrets (JWT, MongoDB, storage credentials) are never returned by the API.',
         '- Auth login/register endpoints are rate-limited.',
       ].join('\n'),
-      contact: { name: 'WorkIndia API' },
+      contact: { name: `${env.appName} API` },
     },
     servers: buildServers(),
     tags: TAGS,

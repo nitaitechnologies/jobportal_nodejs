@@ -465,7 +465,7 @@ async function main(): Promise<void> {
   assertSeedEnvironmentAllowed(env.nodeEnv);
 
   console.log('');
-  console.log('WorkIndia Demo Seed Verification');
+  console.log(`${env.appName} Demo Seed Verification`);
   console.log('');
   console.log(`Environment: ${env.nodeEnv}`);
   console.log(`Mode: ${SEED_MODE}`);

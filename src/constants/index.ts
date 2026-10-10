@@ -11,7 +11,7 @@ export const HTTP_STATUS = {
   INTERNAL_SERVER_ERROR: 500,
 } as const;
 
-export const SERVICE_NAME = 'workindia-api' as const;
+export const SERVICE_NAME = 'jobdeddy-api' as const;
 
 export * from './enums';
 export * from './permissions';

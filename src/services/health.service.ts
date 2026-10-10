@@ -1,4 +1,4 @@
-import { SERVICE_NAME } from '../constants';
+import { env } from '../config/env';
 import { getDatabaseStatus } from '../config/database';
 
 export interface HealthCheckData {
@@ -9,7 +9,7 @@ export interface HealthCheckData {
 export class HealthService {
   getStatus(): HealthCheckData {
     return {
-      service: SERVICE_NAME,
+      service: env.serviceName,
       database: getDatabaseStatus(),
     };
   }

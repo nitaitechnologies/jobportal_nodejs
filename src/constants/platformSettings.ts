@@ -1,3 +1,4 @@
+import { env } from '../config/env';
 import { AI_FEATURE_CATALOG } from './aiFeatures';
 import type { SettingValueType } from './enums';
 
@@ -47,7 +48,7 @@ export interface DefaultPlatformSetting {
 export const DEFAULT_PLATFORM_SETTINGS: readonly DefaultPlatformSetting[] = [
   {
     key: 'general.appName',
-    value: 'WorkIndia',
+    value: env.appName,
     type: 'string',
     group: 'general',
     description: 'Public platform display name',
@@ -57,7 +58,7 @@ export const DEFAULT_PLATFORM_SETTINGS: readonly DefaultPlatformSetting[] = [
   },
   {
     key: 'general.supportEmail',
-    value: 'support@workindia.local',
+    value: env.supportEmail,
     type: 'string',
     group: 'general',
     description: 'Public support contact email',
@@ -271,7 +272,7 @@ export const DEFAULT_PLATFORM_SETTINGS: readonly DefaultPlatformSetting[] = [
   },
   {
     key: 'platform.maintenance.message',
-    value: 'WorkIndia is temporarily under maintenance. Please try again shortly.',
+    value: `${env.appName} is temporarily under maintenance. Please try again shortly.`,
     type: 'string',
     group: 'maintenance',
     description: 'Public message shown during maintenance mode',

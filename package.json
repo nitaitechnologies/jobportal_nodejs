@@ -1,7 +1,7 @@
 {
   "name": "workindia-node-api",
   "version": "1.0.0",
-  "description": "WorkIndia Job Marketplace — Node.js REST API",
+  "description": "Jobdeddy job marketplace — Node.js REST API",
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon --watch src --ext ts --exec ts-node src/server.ts",

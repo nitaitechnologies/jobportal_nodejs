@@ -488,7 +488,7 @@ export const components: OpenAPIV3.ComponentsObject = {
     HealthData: {
       type: 'object',
       properties: {
-        service: { type: 'string', example: 'workindia-api' },
+        service: { type: 'string', example: 'jobdeddy-api' },
         database: {
           type: 'string',
           enum: ['connected', 'disconnected', 'connecting', 'disconnecting'],

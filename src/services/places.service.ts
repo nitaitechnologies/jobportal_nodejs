@@ -35,7 +35,7 @@ async function readJson(url: string, headers?: Record<string, string>): Promise<
   const response = await fetch(url, {
     headers: {
       Accept: 'application/json',
-      'User-Agent': 'WorkIndia/1.0 (job portal location search)',
+      'User-Agent': `${env.appName}/1.0 (job portal location search)`,
       ...headers,
     },
     signal: AbortSignal.timeout(8000),

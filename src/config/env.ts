@@ -31,7 +31,16 @@ function normalizeOrigin(origin: string): string {
   return origin.trim().replace(/\/+$/, '');
 }
 
+function slugifyAppName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'jobdeddy';
+}
+
 const nodeEnv = requireEnv('NODE_ENV', 'development');
+const appName = (process.env.APP_NAME ?? 'Jobdeddy').trim() || 'Jobdeddy';
+const appSlug = slugifyAppName(appName);
+const supportEmail =
+  (process.env.APP_SUPPORT_EMAIL ?? `support@${appSlug}.local`).trim() || `support@${appSlug}.local`;
+const serviceName = (process.env.APP_SERVICE_NAME ?? `${appSlug}-api`).trim() || `${appSlug}-api`;
 const isProduction = nodeEnv === 'production';
 const jwtSecret = requireEnv('JWT_SECRET');
 
@@ -101,6 +110,12 @@ const defaultDevCorsOrigins = isProduction
 
 export const env = {
   nodeEnv,
+  /** Public product name (APP_NAME). */
+  appName,
+  /** Public support inbox (APP_SUPPORT_EMAIL). */
+  supportEmail,
+  /** Health-check service id (APP_SERVICE_NAME, default `<slug>-api`). */
+  serviceName,
   port: parsePositiveInt('PORT', '5000'),
   apiPrefix: requireEnv('API_PREFIX', '/api/v1'),
   clientUrl: clientUrlEarly,

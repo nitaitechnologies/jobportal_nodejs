@@ -20,16 +20,16 @@ function registerConnectionListeners(): void {
 
   connection.on('connected', () => {
     hasConnectedOnce = true;
-    console.log('[workindia-api] MongoDB connected successfully');
+    console.log(`[${env.serviceName}] MongoDB connected successfully`);
   });
 
   connection.on('error', (error: Error) => {
-    console.error('[workindia-api] MongoDB connection error:', error.message);
+    console.error(`[${env.serviceName}] MongoDB connection error:`, error.message);
   });
 
   connection.on('disconnected', () => {
     if (hasConnectedOnce) {
-      console.warn('[workindia-api] MongoDB disconnected');
+      console.warn(`[${env.serviceName}] MongoDB disconnected`);
     }
   });
 
@@ -70,7 +70,7 @@ export async function connectDatabase(): Promise<void> {
     await mongoose.connect(env.mongodbUri);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown database error';
-    console.error('[workindia-api] Failed to connect to MongoDB:', message);
+    console.error(`[${env.serviceName}] Failed to connect to MongoDB:`, message);
     throw error;
   }
 }

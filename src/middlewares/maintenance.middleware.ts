@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
 import { HTTP_STATUS } from '../constants';
+import { env } from '../config/env';
 import { settingsService } from '../services/settings.service';
 import { sendError } from '../utils/apiResponse';
 
@@ -34,7 +35,7 @@ export async function maintenanceGate(
 
     const message = await settingsService.getString(
       'platform.maintenance.message',
-      'WorkIndia is temporarily under maintenance. Please try again shortly.',
+      `${env.appName} is temporarily under maintenance. Please try again shortly.`,
     );
 
     sendError(res, message, HTTP_STATUS.SERVICE_UNAVAILABLE, [
