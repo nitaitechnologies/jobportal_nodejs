@@ -16,6 +16,7 @@ import {
   issueInvoiceForPayment,
   mapInvoice,
 } from './invoice.service';
+import { activatePackageCredits, cityPackageService } from './cityPackage.service';
 import { activateSubscription } from './subscription.service';
 import { walletService } from './wallet.service';
 import { notifySafely } from './notification.service';
@@ -132,6 +133,7 @@ export class PaymentService {
     let credits = 0;
     let description = '';
     let currency: 'INR' = 'INR';
+    let packageMeta: Record<string, unknown> = {};
 
     if (input.kind === 'subscription') {
       const plan = await SubscriptionPlan.findById(input.planId);
@@ -152,6 +154,16 @@ export class PaymentService {
         discountAmount = pricing.discountAmount;
         couponCode = pricing.code;
       }
+    } else if (input.kind === 'city_package') {
+      const row = await cityPackageService.quoteCityPackage(employer, input.cityPackageId ?? '');
+      amount = row.price ?? 0;
+      description = `City package: ${row.name}`;
+      packageMeta = { cityPackageId: row._id.toString() };
+    } else if (input.kind === 'custom_proposal') {
+      const row = await cityPackageService.quoteProposal(employer, input.proposalId ?? '');
+      amount = row.price ?? 0;
+      description = `Custom proposal: ${row.title}`;
+      packageMeta = { proposalId: row._id.toString() };
     } else {
       const pack = await resolveCreditPackById(input.creditPackId ?? '');
       if (!pack) {
@@ -194,6 +206,7 @@ export class PaymentService {
       metadata: {
         autoRenew: Boolean(input.autoRenew),
         simulated: !useGateway,
+        ...packageMeta,
       },
     });
 
@@ -330,6 +343,69 @@ export class PaymentService {
       await subscription.save();
       payment.subscriptionId = subscription._id as mongoose.Types.ObjectId;
       subscriptionPayload = mapEmployerSubscription(subscription);
+    } else if (payment.kind === 'city_package' || payment.kind === 'custom_proposal') {
+      const meta = (payment.metadata ?? {}) as { cityPackageId?: string; proposalId?: string };
+      if (payment.kind === 'city_package') {
+        const row = await cityPackageService.quoteCityPackage(
+          {
+            userId: payment.userId.toString(),
+            companyId: payment.companyId.toString(),
+            employerId: payment.employerId.toString(),
+          } as AuthenticatedEmployer,
+          meta.cityPackageId ?? '',
+        );
+        const subscription = await activatePackageCredits({
+          userId: payment.userId.toString(),
+          companyId: payment.companyId.toString(),
+          name: row.name,
+          city: row.city,
+          price: row.price,
+          durationDays: row.durationDays ?? 30,
+          grants: {
+            jobPosts: row.grants?.jobPosts ?? 0,
+            boosts: row.grants?.boosts ?? 0,
+            unlocks: row.grants?.unlocks ?? 0,
+            createdPoints: row.grants?.createdPoints ?? 0,
+          },
+          kind: 'city',
+          sourceId: row._id.toString(),
+          paymentId: payment._id.toString(),
+        });
+        payment.subscriptionId = subscription._id as mongoose.Types.ObjectId;
+        subscriptionPayload = mapEmployerSubscription(subscription);
+      } else {
+        const row = await cityPackageService.quoteProposal(
+          {
+            userId: payment.userId.toString(),
+            companyId: payment.companyId.toString(),
+            employerId: payment.employerId.toString(),
+          } as AuthenticatedEmployer,
+          meta.proposalId ?? '',
+        );
+        const subscription = await activatePackageCredits({
+          userId: payment.userId.toString(),
+          companyId: payment.companyId.toString(),
+          name: row.title,
+          city: row.city ?? '',
+          price: row.price,
+          durationDays: row.durationDays ?? 30,
+          grants: {
+            jobPosts: row.grants?.jobPosts ?? 0,
+            boosts: row.grants?.boosts ?? 0,
+            unlocks: row.grants?.unlocks ?? 0,
+            createdPoints: row.grants?.createdPoints ?? 0,
+          },
+          kind: 'custom',
+          sourceId: row._id.toString(),
+          paymentId: payment._id.toString(),
+        });
+        row.status = 'paid';
+        row.paidAt = new Date();
+        row.paymentId = payment._id as mongoose.Types.ObjectId;
+        await row.save();
+        payment.subscriptionId = subscription._id as mongoose.Types.ObjectId;
+        subscriptionPayload = mapEmployerSubscription(subscription);
+      }
     } else {
       const credits = payment.credits ?? 0;
       if (credits <= 0) {
@@ -377,7 +453,9 @@ export class PaymentService {
       invoice: mapInvoice(invoice),
       subscription: subscriptionPayload,
       wallet:
-        payment.kind === 'credits'
+        payment.kind === 'credits' ||
+        payment.kind === 'city_package' ||
+        payment.kind === 'custom_proposal'
           ? (await walletService.getWallet(payment.companyId.toString())).wallet
           : null,
     };
@@ -392,7 +470,9 @@ export class PaymentService {
       invoice: invoice ? mapInvoice(invoice) : null,
       subscription: null,
       wallet:
-        payment.kind === 'credits'
+        payment.kind === 'credits' ||
+        payment.kind === 'city_package' ||
+        payment.kind === 'custom_proposal'
           ? (await walletService.getWallet(payment.companyId.toString())).wallet
           : null,
       alreadyConfirmed: true,

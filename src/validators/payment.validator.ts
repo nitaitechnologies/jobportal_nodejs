@@ -10,6 +10,8 @@ export const paymentCheckoutSchema = z
   .object({
     kind: z.enum(PAYMENT_KINDS),
     planId: objectIdSchema.optional(),
+    cityPackageId: objectIdSchema.optional(),
+    proposalId: objectIdSchema.optional(),
     creditPackId: z.string().trim().min(1).max(60).optional(),
     couponCode: z.string().trim().max(40).optional().default(''),
     autoRenew: z.boolean().optional().default(false),
@@ -28,6 +30,20 @@ export const paymentCheckoutSchema = z
         code: 'custom',
         path: ['creditPackId'],
         message: 'creditPackId is required for credit purchases',
+      });
+    }
+    if (value.kind === 'city_package' && !value.cityPackageId) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['cityPackageId'],
+        message: 'cityPackageId is required for a city package',
+      });
+    }
+    if (value.kind === 'custom_proposal' && !value.proposalId) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['proposalId'],
+        message: 'proposalId is required for a custom proposal',
       });
     }
   });

@@ -283,7 +283,7 @@ export const COUPON_STATUSES = ['active', 'inactive'] as const;
 export type CouponStatus = (typeof COUPON_STATUSES)[number];
 
 /** Simulated payment kinds (sheet 359–365) — no live gateway yet. */
-export const PAYMENT_KINDS = ['subscription', 'credits'] as const;
+export const PAYMENT_KINDS = ['subscription', 'credits', 'city_package', 'custom_proposal'] as const;
 export type PaymentKind = (typeof PAYMENT_KINDS)[number];
 
 export const PAYMENT_STATUSES = [
@@ -303,9 +303,14 @@ export const WALLET_TXN_TYPES = [
   'spend_unlock',
   'spend_boost',
   'spend_featured',
+  'spend_job_post',
   'refund',
   'adjustment',
 ] as const;
+
+/** Separate balances granted by a city package or custom proposal. */
+export const PACKAGE_WALLET_BUCKETS = ['jobPosts', 'boosts', 'unlocks', 'createdPoints'] as const;
+export type PackageWalletBucket = (typeof PACKAGE_WALLET_BUCKETS)[number];
 export type WalletTxnType = (typeof WALLET_TXN_TYPES)[number];
 
 export const ADMIN_ROLES = [

@@ -13,6 +13,11 @@ const companyWalletSchema = new Schema(
       unique: true,
     },
     balance: { type: Number, min: 0, default: 0 },
+    /** City-package / custom-proposal credits. createdPoints is reserved and not spent yet. */
+    jobPosts: { type: Number, min: 0, default: 0 },
+    boosts: { type: Number, min: 0, default: 0 },
+    unlocks: { type: Number, min: 0, default: 0 },
+    createdPoints: { type: Number, min: 0, default: 0 },
   },
   {
     timestamps: true,
@@ -29,6 +34,8 @@ const walletTransactionSchema = new Schema(
     balanceAfter: { type: Number, min: 0, required: true },
     paymentId: { type: Schema.Types.ObjectId, ref: 'Payment', default: null },
     description: { type: String, trim: true, default: '', maxlength: 300 },
+    /** `legacy` is the old single credit balance. Package buckets use their own name. */
+    bucket: { type: String, trim: true, default: 'legacy', maxlength: 40 },
     metadata: { type: Schema.Types.Mixed, default: {} },
   },
   {

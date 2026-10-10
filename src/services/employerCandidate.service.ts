@@ -23,6 +23,7 @@ import {
 } from './entitlement.service';
 import { notifySafely, resolveCandidateUserId } from './notification.service';
 import { trackSafely } from './analytics.service';
+import { companyUsesPackageWallets } from './cityPackage.service';
 import { walletService } from './wallet.service';
 import { resolveCreditCosts } from './creditCatalog.service';
 import type {
@@ -677,8 +678,20 @@ export class EmployerCandidateService {
       entitlements.usage.contactUnlocksUsed < entitlements.limits.contactUnlockLimit;
     let creditsSpent = 0;
     let paidWithWallet = false;
+    const packageWallets = await companyUsesPackageWallets(employer.companyId);
 
-    if (planAllows && underPlanLimit) {
+    if (packageWallets) {
+      await walletService.debitBucket({
+        companyId: employer.companyId,
+        bucket: 'unlocks',
+        credits: 1,
+        type: 'spend_unlock',
+        description: `Database unlock for candidate ${candidateId}`,
+        metadata: { candidateId },
+      });
+      creditsSpent = 1;
+      paidWithWallet = true;
+    } else if (planAllows && underPlanLimit) {
       creditsSpent = 0;
     } else {
       const costs = await resolveCreditCosts();
@@ -719,15 +732,17 @@ export class EmployerCandidateService {
       metadata: { action: 'contact_unlock', paidWithWallet },
     });
 
-    const remaining = paidWithWallet
-      ? Math.max(
-          0,
-          entitlements.limits.contactUnlockLimit - entitlements.usage.contactUnlocksUsed,
-        )
-      : Math.max(
-          0,
-          entitlements.limits.contactUnlockLimit - entitlements.usage.contactUnlocksUsed - 1,
-        );
+    const remaining = packageWallets
+      ? await walletService.bucketBalance(employer.companyId, 'unlocks')
+      : paidWithWallet
+        ? Math.max(
+            0,
+            entitlements.limits.contactUnlockLimit - entitlements.usage.contactUnlocksUsed,
+          )
+        : Math.max(
+            0,
+            entitlements.limits.contactUnlockLimit - entitlements.usage.contactUnlocksUsed - 1,
+          );
 
     return {
       contact: { phone: user.phone ?? '', email: user.email ?? '' },

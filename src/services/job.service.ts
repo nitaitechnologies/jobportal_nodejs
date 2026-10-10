@@ -35,6 +35,7 @@ import { getEmployerEntitlements, markExpiredJobsForCompany, FREE_ENTITLEMENTS, 
 import { trackSafely } from './analytics.service';
 import { jobAlertService } from './jobAlert.service';
 import { settingsService } from './settings.service';
+import { companyUsesPackageWallets } from './cityPackage.service';
 import { walletService } from './wallet.service';
 import { resolveCreditCosts } from './creditCatalog.service';
 import { resolveJobExpiresAt, addDays } from '../utils/jobListingExpiry';
@@ -658,18 +659,28 @@ export class JobService {
   async create(employer: AuthenticatedEmployer, input: JobCreateInput) {
     await assertCompanyCanPost(employer.companyId);
 
-    const entitlements = await getEmployerEntitlements(employer);
-    if (entitlements.usage.jobsPostedInPeriod >= entitlements.limits.jobPostLimit) {
-      throw new AppError(
-        'Job post limit reached for your current subscription',
-        HTTP_STATUS.FORBIDDEN,
-        [
-          {
-            path: 'subscription',
-            message: `jobPostLimit is ${entitlements.limits.jobPostLimit}`,
-          },
-        ],
-      );
+    const packageWallets = await companyUsesPackageWallets(employer.companyId);
+    if (packageWallets) {
+      const left = await walletService.bucketBalance(employer.companyId, 'jobPosts');
+      if (left < 1) {
+        throw new AppError('Not enough job post credits', HTTP_STATUS.FORBIDDEN, [
+          { path: 'jobPosts', message: `Available job post credits: ${left}` },
+        ]);
+      }
+    } else {
+      const entitlements = await getEmployerEntitlements(employer);
+      if (entitlements.usage.jobsPostedInPeriod >= entitlements.limits.jobPostLimit) {
+        throw new AppError(
+          'Job post limit reached for your current subscription',
+          HTTP_STATUS.FORBIDDEN,
+          [
+            {
+              path: 'subscription',
+              message: `jobPostLimit is ${entitlements.limits.jobPostLimit}`,
+            },
+          ],
+        );
+      }
     }
 
     if (input.categoryId) {
@@ -691,6 +702,16 @@ export class JobService {
     }
 
     const slug = await uniqueJobSlug(input.title);
+
+    if (packageWallets) {
+      await walletService.debitBucket({
+        companyId: employer.companyId,
+        bucket: 'jobPosts',
+        credits: 1,
+        type: 'spend_job_post',
+        description: 'Job post',
+      });
+    }
 
     const job = (await Job.create({
       companyId: new mongoose.Types.ObjectId(employer.companyId),
@@ -912,8 +933,9 @@ export class JobService {
     assertPublishReady(job);
 
     const entitlements = await getEmployerEntitlements(employer);
+    const packageWallets = await companyUsesPackageWallets(employer.companyId);
 
-    if (job.status !== 'published' && job.status !== 'paused') {
+    if (!packageWallets && job.status !== 'published' && job.status !== 'paused') {
       if (entitlements.usage.activeJobs >= entitlements.limits.activeJobLimit) {
         throw new AppError(
           'Active job limit reached for your current subscription',
@@ -987,8 +1009,19 @@ export class JobService {
 
     assertPublishReady(job);
 
+    const packageWallets = await companyUsesPackageWallets(employer.companyId);
+    if (packageWallets) {
+      await walletService.debitBucket({
+        companyId: employer.companyId,
+        bucket: 'jobPosts',
+        credits: 1,
+        type: 'spend_job_post',
+        description: `Renew job ${id}`,
+        metadata: { jobId: id },
+      });
+    }
     const entitlements = await getEmployerEntitlements(employer);
-    if (entitlements.usage.jobsPostedInPeriod >= entitlements.limits.jobPostLimit) {
+    if (!packageWallets && entitlements.usage.jobsPostedInPeriod >= entitlements.limits.jobPostLimit) {
       throw new AppError(
         'Job post limit reached for your current subscription. Renewing uses one post credit.',
         HTTP_STATUS.FORBIDDEN,
@@ -1321,14 +1354,25 @@ export class JobService {
       );
     }
 
-    const costs = await resolveCreditCosts();
-    await walletService.debit({
-      companyId: employer.companyId,
-      credits: costs.boostNotify,
-      type: 'spend_boost',
-      description: `Boost notify for job ${id}`,
-      metadata: { jobId: id },
-    });
+    if (await companyUsesPackageWallets(employer.companyId)) {
+      await walletService.debitBucket({
+        companyId: employer.companyId,
+        bucket: 'boosts',
+        credits: 1,
+        type: 'spend_boost',
+        description: `Boost for job ${id}`,
+        metadata: { jobId: id },
+      });
+    } else {
+      const costs = await resolveCreditCosts();
+      await walletService.debit({
+        companyId: employer.companyId,
+        credits: costs.boostNotify,
+        type: 'spend_boost',
+        description: `Boost notify for job ${id}`,
+        metadata: { jobId: id },
+      });
+    }
 
     const result = await jobAlertService.notifyMatchingCandidatesForBoost(job._id, {
       minScore: opts.minScore ?? 60,
@@ -1387,18 +1431,30 @@ export class JobService {
     await assertCompanyCanPost(employer.companyId);
     const source = await findOwnedJob(id, employer);
 
-    const entitlements = await getEmployerEntitlements(employer);
-    if (entitlements.usage.jobsPostedInPeriod >= entitlements.limits.jobPostLimit) {
-      throw new AppError(
-        'Job post limit reached for your current subscription',
-        HTTP_STATUS.FORBIDDEN,
-        [
-          {
-            path: 'subscription',
-            message: `jobPostLimit is ${entitlements.limits.jobPostLimit}`,
-          },
-        ],
-      );
+    const packageWallets = await companyUsesPackageWallets(employer.companyId);
+    if (packageWallets) {
+      await walletService.debitBucket({
+        companyId: employer.companyId,
+        bucket: 'jobPosts',
+        credits: 1,
+        type: 'spend_job_post',
+        description: `Duplicate job ${id}`,
+        metadata: { jobId: id },
+      });
+    } else {
+      const entitlements = await getEmployerEntitlements(employer);
+      if (entitlements.usage.jobsPostedInPeriod >= entitlements.limits.jobPostLimit) {
+        throw new AppError(
+          'Job post limit reached for your current subscription',
+          HTTP_STATUS.FORBIDDEN,
+          [
+            {
+              path: 'subscription',
+              message: `jobPostLimit is ${entitlements.limits.jobPostLimit}`,
+            },
+          ],
+        );
+      }
     }
 
     const title = `${source.title} — Copy`.slice(0, 200);
