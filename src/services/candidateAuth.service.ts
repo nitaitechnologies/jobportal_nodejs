@@ -187,7 +187,15 @@ export class CandidateAuthService {
 
   async sendOtp(
     input: CandidateOtpSendInput,
-  ): Promise<{ phone: string; expiresIn: number; dummy: boolean; channel: 'sms' | 'email' | 'none' }> {
+  ): Promise<{
+    phone: string;
+    expiresIn: number;
+    dummy: boolean;
+    channel: 'sms' | 'email' | 'none';
+    isNewUser: boolean;
+  }> {
+    const existing = await User.findOne({ phone: input.phone, role: 'candidate' });
+    const isReturning = Boolean(existing && !existing.deletedAt);
     const result = otpService.send(input.phone, {
       destination: input.phone,
       channel: 'sms',
@@ -198,6 +206,7 @@ export class CandidateAuthService {
       expiresIn: result.expiresIn,
       dummy: result.dummy,
       channel: result.channel,
+      isNewUser: !isReturning,
     };
   }
 
