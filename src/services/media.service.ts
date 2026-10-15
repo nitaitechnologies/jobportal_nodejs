@@ -159,8 +159,19 @@ export async function readMediaBuffer(mediaId: string) {
   const storage = getStorageAdapter();
   const fullPath = storage.resolvePath(media.storageKey);
   const fs = await import('fs/promises');
-  const buffer = await fs.readFile(fullPath);
-  return { media, buffer };
+  try {
+    const buffer = await fs.readFile(fullPath);
+    return { media, buffer };
+  } catch (error) {
+    const code =
+      error && typeof error === 'object' && 'code' in error
+        ? (error as { code?: string }).code
+        : '';
+    if (code === 'ENOENT') {
+      throw new AppError('File not found', HTTP_STATUS.NOT_FOUND);
+    }
+    throw error;
+  }
 }
 
 export async function deleteMediaByRef(

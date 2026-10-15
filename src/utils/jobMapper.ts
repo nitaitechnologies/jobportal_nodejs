@@ -193,6 +193,9 @@ export function mapEmployerJob(
     company?: JobCompanySummary | null;
     /** When true, include videoJd even if ENABLE_VIDEO_JD is off (admin moderation). */
     includeVideoJd?: boolean;
+    shortlistedCount?: number;
+    hotLeadCount?: number;
+    databaseCandidateCount?: number;
   },
 ) {
   return {
@@ -201,6 +204,9 @@ export function mapEmployerJob(
     companyId: job.companyId.toString(),
     category: extras?.category ?? null,
     company: extras?.company ?? null,
+    shortlistedCount: extras?.shortlistedCount ?? 0,
+    hotLeadCount: extras?.hotLeadCount ?? 0,
+    databaseCandidateCount: extras?.databaseCandidateCount ?? 0,
   };
 }
 

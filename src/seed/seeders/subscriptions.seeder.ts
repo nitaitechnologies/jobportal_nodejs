@@ -2,7 +2,7 @@ import { Coupon } from '../../models/Coupon';
 import { Subscription } from '../../models/Subscription';
 import { SubscriptionPlan } from '../../models/SubscriptionPlan';
 import type { SubscriptionStatus } from '../../constants/enums';
-import { PLAN_DEFS, planSlug } from '../data/plans';
+import { HIRING_PLAN_DEFS, PLAN_DEFS, planSlug } from '../data/plans';
 import { daysAgo, daysFromNow } from '../helpers/dates';
 import type { SeedContext, SeedPlanRef } from '../types';
 
@@ -24,11 +24,53 @@ export async function seedSubscriptionPlans(ctx: SeedContext): Promise<void> {
           limits: def.limits,
           status: 'active',
           sortOrder: def.sortOrder,
+          catalog: 'legacy',
         },
       },
       { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
     );
 
+    ctx.plans.push({
+      planId: plan._id,
+      slug: plan.slug,
+      name: plan.name,
+      price: plan.price,
+      billingCycle: plan.billingCycle,
+      durationDays: plan.durationDays,
+      features: def.features,
+      limits: def.limits,
+    });
+  }
+
+  for (const def of HIRING_PLAN_DEFS) {
+    const plan = await SubscriptionPlan.findOneAndUpdate(
+      { slug: def.slug },
+      {
+        $set: {
+          name: def.name,
+          slug: def.slug,
+          description: def.description,
+          price: def.price,
+          currency: 'INR',
+          billingCycle: def.billingCycle,
+          durationDays: def.durationDays,
+          features: def.features,
+          limits: def.limits,
+          status: 'active',
+          sortOrder: def.sortOrder,
+          catalog: def.catalog,
+          hiringIntent: def.hiringIntent,
+          offerType: def.offerType,
+          monthlyPrice: def.monthlyPrice,
+          ...(def.upgradePrice != null ? { upgradePrice: def.upgradePrice } : {}),
+          available: def.available,
+          popular: def.popular,
+          badge: def.badge,
+          highlights: def.highlights,
+        },
+      },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
+    );
     ctx.plans.push({
       planId: plan._id,
       slug: plan.slug,

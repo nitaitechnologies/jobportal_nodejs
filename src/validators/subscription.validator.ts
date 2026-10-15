@@ -23,6 +23,18 @@ const limitsSchema = z
   })
   .strict();
 
+const hiringCatalogFields = {
+  catalog: z.enum(['legacy', 'hiring']).optional(),
+  hiringIntent: z.enum(['single', 'multi']).nullable().optional(),
+  offerType: z.enum(['plan', 'topup']).optional(),
+  monthlyPrice: z.number().min(0).max(10_000_000).optional(),
+  upgradePrice: z.number().min(0).max(10_000_000).nullable().optional(),
+  available: z.boolean().optional(),
+  popular: z.boolean().optional(),
+  badge: z.string().trim().max(40).optional(),
+  highlights: z.array(z.string().trim().min(1).max(240)).max(20).optional(),
+};
+
 const featuresSchema = z
   .object({
     featuredJobs: z.boolean().optional(),
@@ -50,6 +62,7 @@ export const subscriptionPlanCreateSchema = z
     limits: limitsSchema.optional().default({}),
     sortOrder: z.number().int().min(0).max(10_000).optional().default(0),
     status: z.enum(PLAN_STATUSES).optional().default('active'),
+    ...hiringCatalogFields,
   })
   .strict()
   .transform((value) => {
@@ -71,6 +84,7 @@ export const subscriptionPlanUpdateSchema = z
     limits: limitsSchema.optional(),
     sortOrder: z.number().int().min(0).max(10_000).optional(),
     status: z.enum(PLAN_STATUSES).optional(),
+    ...hiringCatalogFields,
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -83,6 +97,7 @@ export const publicPlanQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).optional().default(1),
     limit: z.coerce.number().int().min(1).max(50).optional().default(20),
+    catalog: z.enum(['legacy', 'hiring']).optional(),
   })
   .strict();
 

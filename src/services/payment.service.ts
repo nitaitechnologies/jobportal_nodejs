@@ -6,6 +6,7 @@ import { Company } from '../models/Company';
 import { Invoice } from '../models/Invoice';
 import { Payment } from '../models/Payment';
 import { WalletTransaction } from '../models/CompanyWallet';
+import { Subscription } from '../models/Subscription';
 import { SubscriptionPlan } from '../models/SubscriptionPlan';
 import type { AuthenticatedEmployer } from '../types/auth.types';
 import { AppError } from '../utils/AppError';
@@ -140,7 +141,18 @@ export class PaymentService {
       if (!plan || plan.status !== 'active') {
         throw new AppError('Subscription plan not found', HTTP_STATUS.NOT_FOUND);
       }
+      if (plan.available === false) {
+        throw new AppError('This plan is currently unavailable', HTTP_STATUS.BAD_REQUEST);
+      }
       amount = plan.price ?? 0;
+      if (input.upgrade && typeof plan.upgradePrice === 'number' && plan.upgradePrice > 0) {
+        const live = await Subscription.exists({
+          companyId: new mongoose.Types.ObjectId(employer.companyId),
+          status: { $in: ['active', 'trial'] },
+          $or: [{ endDate: null }, { endDate: { $gt: new Date() } }],
+        });
+        if (live) amount = plan.upgradePrice;
+      }
       currency = (plan.currency as 'INR') || 'INR';
       planId = plan._id as mongoose.Types.ObjectId;
       description = `Subscription: ${plan.name}`;

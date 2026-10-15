@@ -6,6 +6,8 @@ import { AppError } from '../utils/AppError';
 import { sendSuccess } from '../utils/apiResponse';
 import type {
   EmployerLoginInput,
+  EmployerLoginOtpSendInput,
+  EmployerLoginOtpVerifyInput,
   EmployerOtpSendInput,
   EmployerRegisterInput,
   EmployerVerifyOtpInput,
@@ -37,6 +39,27 @@ export class EmployerAuthController {
     try {
       const result = await employerAuthService.login(
         req.body as EmployerLoginInput,
+        deviceMeta(req),
+      );
+      sendSuccess(res, result, 'Employer login successful');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async sendLoginOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await employerAuthService.sendLoginOtp(req.body as EmployerLoginOtpSendInput);
+      sendSuccess(res, result, 'OTP sent successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async verifyLoginOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await employerAuthService.verifyLoginOtp(
+        req.body as EmployerLoginOtpVerifyInput,
         deviceMeta(req),
       );
       sendSuccess(res, result, 'Employer login successful');

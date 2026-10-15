@@ -36,6 +36,8 @@ export interface EmployerEntitlements {
     jobsPostedInPeriod: number;
     activeJobs: number;
     contactUnlocksUsed: number;
+    /** Job boost credits spent on the current plan. */
+    boostsUsed: number;
   };
 }
 
@@ -200,16 +202,30 @@ export function hasAdvancedCandidateSearch(entitlements: EmployerEntitlements): 
   return entitlements.features.advancedCandidateSearch === true;
 }
 
+async function countBoostCharges(companyId: string) {
+  const rows = await Job.aggregate<{ total?: number }>([
+    {
+      $match: {
+        companyId: new mongoose.Types.ObjectId(companyId),
+        deletedAt: null,
+      },
+    },
+    { $group: { _id: null, total: { $sum: { $ifNull: ['$boostCharges', 0] } } } },
+  ]);
+  return Number(rows[0]?.total ?? 0);
+}
+
 export async function getEmployerEntitlements(
   employer: AuthenticatedEmployer,
 ): Promise<EmployerEntitlements> {
   const subscription = await findCurrentCompanySubscription(employer.companyId);
 
   if (!subscription || !isSubscriptionCurrentlyActive(subscription)) {
-    const [jobsPostedInPeriod, activeJobs, contactUnlocksUsed] = await Promise.all([
+    const [jobsPostedInPeriod, activeJobs, contactUnlocksUsed, boostsUsed] = await Promise.all([
       countJobsPostedInPeriod(employer.companyId),
       countActiveJobs(employer.companyId),
       countContactUnlocksInPeriod(employer.companyId),
+      countBoostCharges(employer.companyId),
     ]);
 
     return {
@@ -218,7 +234,7 @@ export async function getEmployerEntitlements(
       subscriptionId: null,
       startDate: null,
       endDate: null,
-      usage: { jobsPostedInPeriod, activeJobs, contactUnlocksUsed },
+      usage: { jobsPostedInPeriod, activeJobs, contactUnlocksUsed, boostsUsed },
     };
   }
 
@@ -239,7 +255,7 @@ export async function getEmployerEntitlements(
     advancedCandidateSearch: Boolean(featuresRaw.advancedCandidateSearch),
   };
 
-  const [jobsPostedInPeriod, activeJobs, contactUnlocksUsed] = await Promise.all([
+  const [jobsPostedInPeriod, activeJobs, contactUnlocksUsed, boostsUsed] = await Promise.all([
     countJobsPostedInPeriod(
       employer.companyId,
       subscription.startDate,
@@ -251,6 +267,7 @@ export async function getEmployerEntitlements(
       subscription.startDate,
       subscription.endDate ?? undefined,
     ),
+    countBoostCharges(employer.companyId),
   ]);
 
   return {
@@ -262,6 +279,6 @@ export async function getEmployerEntitlements(
     endDate: subscription.endDate ?? null,
     features,
     limits,
-    usage: { jobsPostedInPeriod, activeJobs, contactUnlocksUsed },
+    usage: { jobsPostedInPeriod, activeJobs, contactUnlocksUsed, boostsUsed },
   };
 }

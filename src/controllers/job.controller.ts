@@ -159,6 +159,20 @@ export class JobController {
     }
   }
 
+  async boost(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const id = typeof req.params.id === 'string' ? req.params.id : '';
+      const data = await jobService.boost(requireEmployerContext(req), id);
+      sendSuccess(
+        res,
+        data,
+        `Job boosted. ${data.boostsUsed} of ${data.boostsLimit} job boosts used.`,
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async setFeatured(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const id = typeof req.params.id === 'string' ? req.params.id : '';

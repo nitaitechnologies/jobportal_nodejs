@@ -1,10 +1,13 @@
 import mongoose from 'mongoose';
 import { HTTP_STATUS } from '../constants';
 import type { JobStatus } from '../constants/enums';
+import { Application } from '../models/Application';
+import { Candidate } from '../models/Candidate';
 import { Category } from '../models/Category';
 import { Company } from '../models/Company';
 import { Job } from '../models/Job';
 import { Location } from '../models/Location';
+import { User } from '../models/User';
 import type { AuthenticatedEmployer } from '../types/auth.types';
 import { AppError } from '../utils/AppError';
 import { isJobPubliclyVisible } from '../utils/jobVisibility';
@@ -40,6 +43,7 @@ import { walletService } from './wallet.service';
 import { resolveCreditCosts } from './creditCatalog.service';
 import { resolveJobExpiresAt, addDays } from '../utils/jobListingExpiry';
 import { haversineKm } from '../utils/geo';
+import { scoreJobMatch } from '../utils/matchScore';
 import { placesService, type ResolvedPlace } from './places.service';
 import type {
   EmployerJobQuery,
@@ -110,6 +114,7 @@ type JobDocument = mongoose.Document & {
   } | null;
   boostNotifySentAt?: Date | null;
   boostNotifyCount?: number;
+  boostCharges?: number;
   views?: number;
   applicationsCount?: number;
   publishedAt?: Date;
@@ -655,6 +660,204 @@ function applyEditableFields(
   }
 }
 
+const HOT_LEAD_MIN_SCORE = 45;
+
+const MATCH_STOP_WORDS = new Set([
+  'and',
+  'the',
+  'for',
+  'with',
+  'from',
+  'this',
+  'that',
+  'job',
+  'role',
+  'years',
+  'year',
+  'per',
+  'month',
+  'good',
+  'strong',
+  'excellent',
+  'must',
+  'have',
+  'using',
+  'ability',
+  'required',
+  'preferred',
+  'candidate',
+  'working',
+  'work',
+  'skills',
+  'skill',
+]);
+
+function escapeMatchText(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function jobKeywordNeedles(title?: string | null, skills?: string[] | null) {
+  const terms = [title, ...(skills ?? [])].filter(
+    (term): term is string => Boolean(term && term.trim().length > 1),
+  );
+  const needles = new Set<string>();
+  for (const term of terms) {
+    const words = term
+      .trim()
+      .split(/[^a-z0-9+#]+/i)
+      .filter((word) => word.length > 2 && !MATCH_STOP_WORDS.has(word.toLowerCase()));
+    if (words.length >= 2) needles.add(words.join(' '));
+    for (const word of words) needles.add(word);
+  }
+  return [...needles].sort((left, right) => right.length - left.length);
+}
+
+function textHitsKeywords(text: string, needles: string[]) {
+  if (!text || needles.length === 0) return false;
+  const pattern = new RegExp(
+    `(?<![a-z0-9+#])(?:${needles.map(escapeMatchText).join('|')})(?![a-z0-9+#])`,
+    'i',
+  );
+  return pattern.test(text);
+}
+
+async function countDatabaseMatches(
+  jobs: Array<{
+    _id: mongoose.Types.ObjectId;
+    title?: string | null;
+    skills?: string[] | null;
+  }>,
+) {
+  const counts = new Map<string, number>();
+  if (!jobs.length) return counts;
+
+  const candidates = await Candidate.find({
+    profileVisibility: { $in: ['public', 'employers_only'] },
+  })
+    .select('userId currentJobTitle skills workExperience.jobTitle workExperience.company')
+    .limit(500)
+    .lean<
+      Array<{
+        userId: mongoose.Types.ObjectId;
+        currentJobTitle?: string | null;
+        skills?: string[] | null;
+        workExperience?: Array<{ jobTitle?: string | null; company?: string | null }>;
+      }>
+    >();
+
+  const users = await User.find({
+    _id: { $in: candidates.map((candidate) => candidate.userId) },
+    role: 'candidate',
+    status: 'active',
+  }).select('_id');
+  const activeIds = new Set(users.map((user) => user._id.toString()));
+  const visible = candidates.filter((candidate) => activeIds.has(candidate.userId.toString()));
+
+  for (const job of jobs) {
+    const needles = jobKeywordNeedles(job.title, job.skills);
+    let count = 0;
+    if (needles.length > 0) {
+      for (const candidate of visible) {
+        const currentJob = candidate.currentJobTitle ?? '';
+        const experience = (candidate.workExperience ?? [])
+          .map((item) => `${item.jobTitle ?? ''} ${item.company ?? ''}`)
+          .join(' ');
+        const skills = (candidate.skills ?? []).join(' ');
+        if (
+          textHitsKeywords(currentJob, needles) ||
+          textHitsKeywords(experience, needles) ||
+          textHitsKeywords(skills, needles)
+        ) {
+          count += 1;
+        }
+      }
+    }
+    counts.set(job._id.toString(), count);
+  }
+  return counts;
+}
+
+async function countHotLeads(
+  jobs: Array<{
+    _id: mongoose.Types.ObjectId;
+    title?: string | null;
+    skills?: string[] | null;
+    requirements?: string[] | null;
+    experienceMin?: number | null;
+    experienceMax?: number | null;
+    salaryMin?: number | null;
+    salaryMax?: number | null;
+    workMode?: string | null;
+    location?: {
+      displayName?: string | null;
+      city?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
+    } | null;
+  }>,
+) {
+  const counts = new Map<string, number>();
+  if (!jobs.length) return counts;
+  const candidates = await Candidate.find({
+    profileVisibility: { $in: ['public', 'employers_only'] },
+  })
+    .select(
+      'headline currentJobTitle skills totalExperience expectedSalary currentLocation latitude longitude openToWork availableFrom noticePeriod',
+    )
+    .limit(200)
+    .lean();
+
+  for (const job of jobs) {
+    const locationText = [job.location?.displayName, job.location?.city].filter(Boolean).join(', ');
+    let count = 0;
+    for (const candidate of candidates) {
+      const match = scoreJobMatch(
+        {
+          title: job.title,
+          skills: job.skills,
+          requirements: job.requirements,
+          experienceMin: job.experienceMin,
+          experienceMax: job.experienceMax,
+          salaryMin: job.salaryMin,
+          salaryMax: job.salaryMax,
+          workMode: job.workMode,
+          locationText,
+          latitude: job.location?.latitude,
+          longitude: job.location?.longitude,
+        },
+        {
+          headline: candidate.headline,
+          currentJobTitle: candidate.currentJobTitle,
+          skills: candidate.skills,
+          totalExperience: candidate.totalExperience,
+          expectedSalary: candidate.expectedSalary,
+          currentLocation: candidate.currentLocation,
+          latitude: candidate.latitude,
+          longitude: candidate.longitude,
+          openToWork: candidate.openToWork,
+          availableFrom: candidate.availableFrom,
+          noticePeriod: candidate.noticePeriod,
+        },
+      );
+      if (match.overall >= HOT_LEAD_MIN_SCORE) count += 1;
+    }
+    counts.set(job._id.toString(), count);
+  }
+  return counts;
+}
+
+async function loadEmployerJobActivity(jobIds: mongoose.Types.ObjectId[]) {
+  const shortlistedRows = jobIds.length
+    ? await Application.aggregate<{ _id: mongoose.Types.ObjectId; count: number }>([
+        { $match: { jobId: { $in: jobIds }, status: 'shortlisted' } },
+        { $group: { _id: '$jobId', count: { $sum: 1 } } },
+      ])
+    : [];
+  return {
+    shortlisted: new Map(shortlistedRows.map((row) => [row._id.toString(), row.count])),
+  };
+}
+
 export class JobService {
   async create(employer: AuthenticatedEmployer, input: JobCreateInput) {
     await assertCompanyCanPost(employer.companyId);
@@ -801,6 +1004,12 @@ export class JobService {
         .filter((id): id is mongoose.Types.ObjectId => Boolean(id)),
     );
     const companyMap = await loadCompanyMap([new mongoose.Types.ObjectId(employer.companyId)]);
+    const jobIds = items.map((item) => item._id as mongoose.Types.ObjectId);
+    const [activity, hotLeads, databaseMatches] = await Promise.all([
+      loadEmployerJobActivity(jobIds),
+      countHotLeads(items),
+      countDatabaseMatches(items),
+    ]);
 
     return {
       jobs: items.map((item) =>
@@ -809,6 +1018,9 @@ export class JobService {
             ? categoryMap.get(item.categoryId.toString()) ?? null
             : null,
           company: companyMap.get(employer.companyId) ?? null,
+          shortlistedCount: activity.shortlisted.get(item._id.toString()) ?? 0,
+          hotLeadCount: hotLeads.get(item._id.toString()) ?? 0,
+          databaseCandidateCount: databaseMatches.get(item._id.toString()) ?? 0,
         }),
       ),
       pagination: {
@@ -822,13 +1034,16 @@ export class JobService {
 
   async getEmployerById(employer: AuthenticatedEmployer, id: string) {
     const job = await findOwnedJob(id, employer);
-    const [category, company] = await Promise.all([
+    const [category, company, activity, hotLeads, databaseMatches] = await Promise.all([
       job.categoryId
         ? Category.findById(job.categoryId).select('name slug')
         : Promise.resolve(null),
       Company.findById(job.companyId).select(
         'name slug logo industry companySize headquarters verificationStatus',
       ),
+      loadEmployerJobActivity([job._id as mongoose.Types.ObjectId]),
+      countHotLeads([job]),
+      countDatabaseMatches([job]),
     ]);
 
     return {
@@ -836,6 +1051,9 @@ export class JobService {
         category: category
           ? { id: category._id.toString(), name: category.name, slug: category.slug }
           : null,
+        shortlistedCount: activity.shortlisted.get(job._id.toString()) ?? 0,
+        hotLeadCount: hotLeads.get(job._id.toString()) ?? 0,
+        databaseCandidateCount: databaseMatches.get(job._id.toString()) ?? 0,
         company: company
           ? {
               id: company._id.toString(),
@@ -1242,6 +1460,48 @@ export class JobService {
       HTTP_STATUS.CONFLICT,
       [{ path: 'status', message: `Current status is "${job.status}"` }],
     );
+  }
+
+  /**
+   * Spend one plan job-boost credit, mark the listing boosted, and refresh visibility.
+   */
+  async boost(employer: AuthenticatedEmployer, id: string) {
+    const job = await findOwnedJob(id, employer);
+    if (job.status !== 'published' && job.status !== 'paused') {
+      throw new AppError('Only live jobs can be boosted', HTTP_STATUS.CONFLICT);
+    }
+
+    const entitlements = await getEmployerEntitlements(employer);
+    const limit = entitlements.limits.featuredJobLimit ?? 0;
+    const used = entitlements.usage.boostsUsed ?? 0;
+    if (limit <= 0 || used >= limit) {
+      throw new AppError(
+        limit <= 0
+          ? 'Your plan does not include job boosts. Upgrade to boost this job.'
+          : `Job boosts used up (${used}/${limit}). Upgrade your plan for more boosts.`,
+        HTTP_STATUS.FORBIDDEN,
+      );
+    }
+
+    const turningOn = !job.featured;
+    job.boostCharges = (job.boostCharges ?? 0) + 1;
+    job.featured = true;
+    job.featuredAt = new Date();
+    if (turningOn) {
+      job.set('boostBaseline', {
+        views: job.views ?? 0,
+        applicationsCount: job.applicationsCount ?? 0,
+        capturedAt: new Date(),
+      });
+    }
+    await job.save();
+
+    const detail = await this.getEmployerById(employer, id);
+    return {
+      ...detail,
+      boostsUsed: used + 1,
+      boostsLimit: limit,
+    };
   }
 
   async setFeatured(employer: AuthenticatedEmployer, id: string, featured: boolean) {

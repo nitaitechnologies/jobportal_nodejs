@@ -137,6 +137,10 @@ employerJobRouter.patch(
   },
 );
 
+employerJobRouter.post('/:id/boost', validateObjectIdParam('id'), (req, res, next) => {
+  void jobController.boost(req, res, next);
+});
+
 employerJobRouter.post(
   '/:id/boost-notify',
   validateObjectIdParam('id'),

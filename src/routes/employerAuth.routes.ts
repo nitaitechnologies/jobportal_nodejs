@@ -8,6 +8,8 @@ import { requireRole } from '../middlewares/role.middleware';
 import { validateObjectIdParam } from '../middlewares/objectIdParam.middleware';
 import { validateBody } from '../middlewares/validate.middleware';
 import {
+  employerLoginOtpSendSchema,
+  employerLoginOtpVerifySchema,
   employerLoginSchema,
   employerOtpSendSchema,
   employerOtpVerifySchema,
@@ -32,6 +34,24 @@ employerAuthRouter.post(
   validateBody(employerLoginSchema),
   (req, res, next) => {
     void employerAuthController.login(req, res, next);
+  },
+);
+
+employerAuthRouter.post(
+  '/login/otp/send',
+  authRateLimiter,
+  validateBody(employerLoginOtpSendSchema),
+  (req, res, next) => {
+    void employerAuthController.sendLoginOtp(req, res, next);
+  },
+);
+
+employerAuthRouter.post(
+  '/login/otp/verify',
+  authRateLimiter,
+  validateBody(employerLoginOtpVerifySchema),
+  (req, res, next) => {
+    void employerAuthController.verifyLoginOtp(req, res, next);
   },
 );
 

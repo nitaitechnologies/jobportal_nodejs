@@ -25,6 +25,7 @@ import {
 import { AppError } from '../utils/AppError';
 import { mapPublicJobSummary } from '../utils/jobMapper';
 import { isJobPubliclyVisible } from '../utils/jobVisibility';
+import { countSimilarJobApplications } from '../utils/similarJobApplications';
 import {
   notifySafely,
   resolveCandidateUserId,
@@ -365,6 +366,7 @@ async function loadEmployerCandidateView(candidateId: mongoose.Types.ObjectId) {
     expectedSalary: candidate.expectedSalary ?? null,
     noticePeriod: candidate.noticePeriod ?? 0,
     availableFrom: candidate.availableFrom ?? null,
+    updatedAt: candidate.updatedAt ? new Date(candidate.updatedAt).toISOString() : null,
     latitude: typeof candidate.latitude === 'number' ? candidate.latitude : null,
     longitude: typeof candidate.longitude === 'number' ? candidate.longitude : null,
   };
@@ -951,12 +953,19 @@ export class ApplicationService {
       'title slug status workMode employmentType skills requirements experienceMin experienceMax salaryMin salaryMax location',
     );
     const jobMap = new Map(jobs.map((job) => [job._id.toString(), job]));
+    const focusJob = query.jobId ? jobMap.get(query.jobId) : undefined;
+    const similarJobs = focusJob
+      ? await countSimilarJobApplications(
+          focusJob,
+          items.map((item) => item.candidateId.toString()),
+        )
+      : null;
 
     const applications = await Promise.all(
       items.map(async (item) => {
         const job = jobMap.get(item.jobId.toString());
         const candidateView = await loadEmployerCandidateView(item.candidateId);
-        return mapEmployerApplication(item, {
+        const mapped = mapEmployerApplication(item, {
           job: job
             ? {
                 id: job._id.toString(),
@@ -970,6 +979,11 @@ export class ApplicationService {
           candidate: candidateView,
           match: job && candidateView ? matchFor(job, candidateView) : null,
         });
+        if (!similarJobs) return mapped;
+        return {
+          ...mapped,
+          similarJobsApplied: similarJobs.get(item.candidateId.toString()) ?? 0,
+        };
       }),
     );
 

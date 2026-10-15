@@ -176,6 +176,8 @@ const jobSchema = new Schema(
     /** Last targeted boost notify to matching candidates (319). */
     boostNotifySentAt: { type: Date, default: null },
     boostNotifyCount: { type: Number, min: 0, default: 0 },
+    /** Plan job-boost credits spent on this listing. */
+    boostCharges: { type: Number, min: 0, default: 0 },
     views: { type: Number, min: 0, default: 0 },
     applicationsCount: { type: Number, min: 0, default: 0 },
     publishedAt: { type: Date },

@@ -15,6 +15,8 @@ export const paymentCheckoutSchema = z
     creditPackId: z.string().trim().min(1).max(60).optional(),
     couponCode: z.string().trim().max(40).optional().default(''),
     autoRenew: z.boolean().optional().default(false),
+    /** Charge `upgradePrice` when the company already has a live plan. */
+    upgrade: z.boolean().optional().default(false),
   })
   .strict()
   .superRefine((value, ctx) => {

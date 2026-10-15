@@ -4,6 +4,7 @@ import { SubscriptionPlan } from '../models/SubscriptionPlan';
 import { AppError } from '../utils/AppError';
 import { createUniqueSlug } from '../utils/slug';
 import { mapAdminPlan, mapPublicPlan } from '../utils/subscriptionMapper';
+import { settingsService } from './settings.service';
 import type {
   AdminPlanQuery,
   PublicPlanQuery,
@@ -36,7 +37,6 @@ async function uniquePlanSlug(source: string, excludeId?: string): Promise<strin
 
 export class SubscriptionPlanService {
   async listPublic(query: PublicPlanQuery) {
-    const { settingsService } = await import('./settings.service.js');
     const plansPublic = await settingsService.getBoolean('subscriptions.plansPublic', true);
     if (!plansPublic) {
       return {
@@ -50,7 +50,8 @@ export class SubscriptionPlanService {
       };
     }
 
-    const filter = { status: 'active' as const };
+    const filter: Record<string, unknown> = { status: 'active' };
+    if (query.catalog) filter.catalog = query.catalog;
     const skip = (query.page - 1) * query.limit;
     const [total, rows] = await Promise.all([
       SubscriptionPlan.countDocuments(filter),
@@ -109,6 +110,15 @@ export class SubscriptionPlanService {
         },
         sortOrder: input.sortOrder,
         status: input.status,
+        catalog: input.catalog ?? 'legacy',
+        hiringIntent: input.hiringIntent ?? null,
+        offerType: input.offerType ?? 'plan',
+        monthlyPrice: input.monthlyPrice ?? input.price,
+        ...(input.upgradePrice != null ? { upgradePrice: input.upgradePrice } : {}),
+        available: input.available ?? true,
+        popular: input.popular ?? false,
+        badge: input.badge ?? '',
+        highlights: input.highlights ?? [],
       });
       return { plan: mapAdminPlan(plan) };
     } catch (error) {
@@ -172,6 +182,19 @@ export class SubscriptionPlanService {
     if (input.durationDays !== undefined) plan.durationDays = input.durationDays;
     if (input.sortOrder !== undefined) plan.sortOrder = input.sortOrder;
     if (input.status !== undefined) plan.status = input.status;
+    if (input.catalog !== undefined) plan.catalog = input.catalog;
+    if (input.hiringIntent !== undefined) plan.hiringIntent = input.hiringIntent;
+    if (input.offerType !== undefined) plan.offerType = input.offerType;
+    if (input.monthlyPrice !== undefined) plan.monthlyPrice = input.monthlyPrice;
+    if (input.upgradePrice === null) {
+      plan.set('upgradePrice', undefined);
+    } else if (input.upgradePrice !== undefined) {
+      plan.upgradePrice = input.upgradePrice;
+    }
+    if (input.available !== undefined) plan.available = input.available;
+    if (input.popular !== undefined) plan.popular = input.popular;
+    if (input.badge !== undefined) plan.badge = input.badge;
+    if (input.highlights !== undefined) plan.highlights = input.highlights;
     if (input.features) {
       plan.features = {
         featuredJobs: input.features.featuredJobs ?? plan.features?.featuredJobs ?? false,

@@ -13,6 +13,15 @@ export interface PlanLike {
   limits?: Record<string, unknown> | null;
   status?: string;
   sortOrder?: number | null;
+  catalog?: string | null;
+  hiringIntent?: string | null;
+  offerType?: string | null;
+  monthlyPrice?: number | null;
+  upgradePrice?: number | null;
+  available?: boolean | null;
+  popular?: boolean | null;
+  badge?: string | null;
+  highlights?: string[] | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -52,6 +61,15 @@ export function mapPublicPlan(plan: PlanLike) {
     features: plan.features ?? {},
     limits: plan.limits ?? {},
     sortOrder: plan.sortOrder ?? 0,
+    catalog: plan.catalog ?? 'legacy',
+    hiringIntent: plan.hiringIntent ?? null,
+    offerType: plan.offerType ?? 'plan',
+    monthlyPrice: plan.monthlyPrice ?? plan.price,
+    upgradePrice: typeof plan.upgradePrice === 'number' ? plan.upgradePrice : null,
+    available: plan.available !== false,
+    popular: Boolean(plan.popular),
+    badge: plan.badge ?? '',
+    highlights: Array.isArray(plan.highlights) ? plan.highlights : [],
   };
 }
 

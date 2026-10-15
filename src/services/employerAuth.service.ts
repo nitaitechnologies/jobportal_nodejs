@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import mongoose from 'mongoose';
 import { env } from '../config/env';
 import { Company } from '../models/Company';
@@ -11,6 +12,8 @@ import { comparePassword, hashPassword } from '../utils/password';
 import { createUniqueSlug } from '../utils/slug';
 import type {
   EmployerLoginInput,
+  EmployerLoginOtpSendInput,
+  EmployerLoginOtpVerifyInput,
   EmployerRegisterInput,
   EmployerVerifyOtpInput,
 } from '../validators/employerAuth.validator';
@@ -277,6 +280,188 @@ export class EmployerAuthService {
     });
 
     return await mapAuthPayload(user, employer, company, accessToken, sessionId);
+  }
+
+  async sendLoginOtp(input: EmployerLoginOtpSendInput): Promise<{
+    phone: string;
+    expiresIn: number;
+    dummy: boolean;
+    channel: 'sms' | 'email' | 'none';
+    isNewUser: boolean;
+  }> {
+    const existing = await this.lookupPhoneForEmployerOtp(input.phone);
+    const result = otpService.send(`employer:login:${input.phone}`, {
+      destination: input.phone,
+      channel: 'sms',
+      purpose: 'employer_login',
+    });
+    return {
+      phone: input.phone,
+      expiresIn: result.expiresIn,
+      dummy: result.dummy,
+      channel: result.channel,
+      isNewUser: !existing,
+    };
+  }
+
+  async verifyLoginOtp(
+    input: EmployerLoginOtpVerifyInput,
+    meta: SessionDeviceMeta = {},
+  ): Promise<EmployerAuthResult> {
+    const existing = await this.lookupPhoneForEmployerOtp(input.phone);
+    const name = input.name?.trim() ?? '';
+
+    if (!existing && name.length < 2) {
+      throw new AppError(
+        'Name is required for first-time mobile signup',
+        HTTP_STATUS.BAD_REQUEST,
+      );
+    }
+
+    otpService.verify(`employer:login:${input.phone}`, input.otp);
+
+    if (existing) {
+      const { user, employer, company } = existing;
+      user.phoneVerified = true;
+      user.lastLoginAt = new Date();
+      await user.save();
+
+      const { accessToken, sessionId } = await authSessionService.createAccessToken(
+        user._id.toString(),
+        'employer',
+        meta,
+        { maxSessions: env.employerMaxSessions },
+      );
+
+      await trackSafely({
+        eventType: 'employer_login',
+        userId: user._id,
+        actorRole: 'employer',
+        entityType: 'employer',
+        entityId: employer._id,
+        employerId: employer._id,
+        companyId: company._id,
+      });
+
+      return await mapAuthPayload(user, employer, company, accessToken, sessionId);
+    }
+
+    return this.createEmployerFromPhoneOtp(input.phone, name, meta);
+  }
+
+  private async lookupPhoneForEmployerOtp(phone: string) {
+    const user = await User.findOne({ phone });
+    if (!user || user.deletedAt) return null;
+
+    if (user.role !== 'employer') {
+      throw new AppError(
+        'This mobile number is already registered. Use a different number.',
+        HTTP_STATUS.CONFLICT,
+      );
+    }
+
+    if (user.status !== 'active') {
+      throw new AppError('Employer access denied', HTTP_STATUS.FORBIDDEN);
+    }
+
+    const employer = await Employer.findOne({ userId: user._id });
+    if (!employer || employer.status !== 'active' || !employer.companyId) {
+      throw new AppError('Employer access denied', HTTP_STATUS.FORBIDDEN);
+    }
+
+    const company = await Company.findById(employer.companyId);
+    if (!company || company.status === 'suspended') {
+      throw new AppError('Employer access denied', HTTP_STATUS.FORBIDDEN);
+    }
+
+    return { user, employer, company };
+  }
+
+  private async createEmployerFromPhoneOtp(
+    phone: string,
+    name: string,
+    meta: SessionDeviceMeta,
+  ): Promise<EmployerAuthResult> {
+    const email = `employer.otp.${phone}@workindia.local`;
+    const passwordHash = await hashPassword(randomBytes(32).toString('hex'));
+    const slug = await createUniqueSlug(name, async (value) => {
+      const found = await Company.findOne({ slug: value }).select('_id');
+      return Boolean(found);
+    });
+
+    let createdUserId: mongoose.Types.ObjectId | null = null;
+    let createdCompanyId: mongoose.Types.ObjectId | null = null;
+
+    try {
+      const user = await User.create({
+        name,
+        email,
+        phone,
+        passwordHash,
+        role: 'employer',
+        status: 'active',
+        phoneVerified: true,
+        lastLoginAt: new Date(),
+      });
+      createdUserId = user._id;
+
+      const company = await Company.create({
+        name,
+        slug,
+        verificationStatus: 'pending',
+        status: 'active',
+        contactPhone: phone,
+      });
+      createdCompanyId = company._id;
+
+      const employer = await Employer.create({
+        userId: user._id,
+        companyId: company._id,
+        teamRole: 'owner',
+        designation: designationFor('owner'),
+        verified: true,
+        status: 'active',
+      });
+
+      try {
+        await referralService.ensureCode(user._id, 'employer');
+      } catch (referralError) {
+        console.error('[referral] employer OTP signup code failed', referralError);
+      }
+
+      const { accessToken, sessionId } = await authSessionService.createAccessToken(
+        user._id.toString(),
+        'employer',
+        meta,
+        { maxSessions: env.employerMaxSessions },
+      );
+
+      await trackSafely({
+        eventType: 'employer_login',
+        userId: user._id,
+        actorRole: 'employer',
+        entityType: 'employer',
+        entityId: employer._id,
+        employerId: employer._id,
+        companyId: company._id,
+      });
+
+      return await mapAuthPayload(user, employer, company, accessToken, sessionId);
+    } catch (error) {
+      if (createdUserId) {
+        await Employer.deleteOne({ userId: createdUserId }).catch(() => undefined);
+        await User.deleteOne({ _id: createdUserId }).catch(() => undefined);
+      }
+      if (createdCompanyId) {
+        await Company.deleteOne({ _id: createdCompanyId }).catch(() => undefined);
+      }
+
+      if (error instanceof AppError) throw error;
+      if (isDuplicateKeyError(error)) {
+        throw new AppError('An account with this phone already exists', HTTP_STATUS.CONFLICT);
+      }
+      throw error;
+    }
   }
 
   async getProfile(userId: string): Promise<Omit<EmployerAuthResult, 'accessToken' | 'sessionId'>> {

@@ -16,6 +16,7 @@ import { noticeDaysUntil } from '../utils/availability';
 import { haversineKm } from '../utils/geo';
 import { parseMediaRef } from '../utils/mediaMapper';
 import { scoreJobMatch, type JobMatchSource, type MatchBreakdown } from '../utils/matchScore';
+import { countSimilarJobApplications } from '../utils/similarJobApplications';
 import {
   canUnlockCandidateContact,
   getEmployerEntitlements,
@@ -91,6 +92,8 @@ type CandidateCardSource = {
   education?: Array<{ degree?: string; fieldOfStudy?: string; institution?: string }>;
   workExperience?: Array<{ jobTitle?: string; company?: string }>;
   languages?: Array<{ name?: string; proficiency?: string }>;
+  gender?: string | null;
+  updatedAt?: Date;
   openToWork?: boolean;
   preferredJobTypes?: string[];
   preferredWorkModes?: string[];
@@ -266,6 +269,8 @@ function toCard(input: {
   detailed?: boolean;
   saved?: SavedMeta | null;
   contactUnlocked?: boolean;
+  unlockedAt?: string | null;
+  similarJobsApplied?: number;
   distanceKm?: number;
 }) {
   const { candidate, user, match, saved, contactUnlocked = false } = input;
@@ -289,12 +294,34 @@ function toCard(input: {
     employmentStatus: candidate.employmentStatus ?? 'looking',
     openToWork: candidate.openToWork !== false,
     languages: languageNames,
+    languageDetails: (candidate.languages ?? [])
+      .filter((item) => item.name?.trim())
+      .map((item) => ({
+        name: item.name?.trim() ?? '',
+        proficiency: item.proficiency ?? 'conversational',
+      })),
+    gender: candidate.gender ?? '',
+    updatedAt: candidate.updatedAt ? new Date(candidate.updatedAt).toISOString() : null,
     hasResume: hasStoredResume(resumeValue),
     hasVideoResume: hasStoredVideoResume(videoResumeValue),
     isSaved: Boolean(saved),
     tags: saved?.tags ?? [],
     contactUnlocked,
+    unlockedAt: input.unlockedAt ?? null,
+    ...(input.similarJobsApplied !== undefined
+      ? { similarJobsApplied: input.similarJobsApplied }
+      : {}),
     match,
+    expectedSalary: candidate.expectedSalary ?? null,
+    education: (candidate.education ?? []).slice(0, 2).map((item) => ({
+      degree: item.degree ?? '',
+      fieldOfStudy: item.fieldOfStudy ?? '',
+      institution: item.institution ?? '',
+    })),
+    workExperience: (candidate.workExperience ?? []).slice(0, 2).map((item) => ({
+      jobTitle: item.jobTitle ?? '',
+      company: item.company ?? '',
+    })),
     ...(input.distanceKm !== undefined ? { distanceKm: input.distanceKm } : {}),
   };
 
@@ -381,12 +408,17 @@ export class EmployerCandidateService {
   }
 
   private async loadUnlockedSet(employer: AuthenticatedEmployer, candidateIds: string[]) {
-    if (candidateIds.length === 0) return new Set<string>();
+    const unlocked = new Map<string, string>();
+    if (candidateIds.length === 0) return unlocked;
     const rows = await ContactUnlock.find({
       companyId: companyId(employer),
       candidateId: { $in: candidateIds.map((id) => new mongoose.Types.ObjectId(id)) },
-    }).select('candidateId');
-    return new Set(rows.map((row) => row.candidateId.toString()));
+    }).select('candidateId unlockedAt createdAt');
+    for (const row of rows) {
+      const at = row.unlockedAt ?? row.createdAt;
+      unlocked.set(row.candidateId.toString(), at ? new Date(at).toISOString() : '');
+    }
+    return unlocked;
   }
 
   async assertVisibleCandidate(_employer: AuthenticatedEmployer, id: string) {
@@ -453,7 +485,7 @@ export class EmployerCandidateService {
     const candidates = await Candidate.find(filter).sort({ updatedAt: -1 }).limit(fetchCap);
 
     const candidateIds = candidates.map((item) => item._id.toString());
-    const [users, savedMap, unlockedSet] = await Promise.all([
+    const [users, savedMap, unlockedSet, similarJobs] = await Promise.all([
       User.find({
         _id: { $in: candidates.map((item) => item.userId) },
         role: 'candidate',
@@ -461,6 +493,7 @@ export class EmployerCandidateService {
       }).select('name phone email'),
       this.loadSavedMap(employer, candidateIds),
       this.loadUnlockedSet(employer, candidateIds),
+      job ? countSimilarJobApplications(job, candidateIds) : Promise.resolve(new Map<string, number>()),
     ]);
     const userMap = new Map(users.map((user) => [user._id.toString(), user]));
     const needle = query.q?.trim().toLowerCase() ?? '';
@@ -502,6 +535,8 @@ export class EmployerCandidateService {
           match,
           saved,
           contactUnlocked: unlockedSet.has(candidateId),
+          unlockedAt: unlockedSet.get(candidateId) || null,
+          similarJobsApplied: job ? (similarJobs.get(candidateId) ?? 0) : undefined,
           distanceKm,
         }),
       ];
@@ -583,6 +618,7 @@ export class EmployerCandidateService {
       detailed: true,
       saved,
       contactUnlocked: unlockedSet.has(id),
+      unlockedAt: unlockedSet.get(id) || null,
     });
 
     return {
@@ -673,7 +709,9 @@ export class EmployerCandidateService {
       );
     }
 
-    const planAllows = canUnlockCandidateContact(entitlements);
+    const planAllows =
+      canUnlockCandidateContact(entitlements) ||
+      (entitlements.limits.contactUnlockLimit ?? 0) > 0;
     const underPlanLimit =
       entitlements.usage.contactUnlocksUsed < entitlements.limits.contactUnlockLimit;
     let creditsSpent = 0;

@@ -63,6 +63,19 @@ const subscriptionPlanSchema = new Schema(
       default: 'active',
     },
     sortOrder: { type: Number, default: 0 },
+    /** `legacy` keeps older starter/professional plans. `hiring` is the public pricing catalog. */
+    catalog: { type: String, enum: ['legacy', 'hiring'], default: 'legacy' },
+    /** Which hiring requirement this offer belongs to. */
+    hiringIntent: { type: String, enum: ['single', 'multi', null], default: null },
+    offerType: { type: String, enum: ['plan', 'topup'], default: 'plan' },
+    /** Shown as ₹X/month. `price` is the upfront amount. */
+    monthlyPrice: { type: Number, min: 0, default: 0 },
+    /** Discounted charge when the company already has a live plan. */
+    upgradePrice: { type: Number, min: 0 },
+    available: { type: Boolean, default: true },
+    popular: { type: Boolean, default: false },
+    badge: { type: String, trim: true, default: '', maxlength: 40 },
+    highlights: { type: [String], default: [] },
   },
   {
     timestamps: true,
@@ -78,6 +91,7 @@ subscriptionPlanSchema.pre('validate', function preValidate() {
 
 subscriptionPlanSchema.index({ slug: 1 }, { unique: true });
 subscriptionPlanSchema.index({ status: 1, sortOrder: 1 });
+subscriptionPlanSchema.index({ catalog: 1, hiringIntent: 1, sortOrder: 1 });
 
 export type ISubscriptionPlan = InferSchemaType<typeof subscriptionPlanSchema>;
 export type SubscriptionPlanModel = Model<ISubscriptionPlan>;

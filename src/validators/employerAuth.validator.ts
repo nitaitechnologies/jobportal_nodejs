@@ -135,6 +135,49 @@ export const employerLoginSchema = z.object({
     }),
 });
 
+const employerLoginPhone = z
+  .union([z.string(), z.undefined(), z.null()])
+  .transform((value) => (typeof value === 'string' ? normalizePhone(value) : ''))
+  .superRefine((value, ctx) => {
+    if (!value) {
+      ctx.addIssue({ code: 'custom', message: 'Phone is required' });
+      return;
+    }
+    if (!isValidPhone(value)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Phone must be a valid 10-digit mobile number',
+      });
+    }
+  });
+
+/** Public phone OTP sign-in. Separate from authenticated contact verification. */
+export const employerLoginOtpSendSchema = z
+  .object({
+    phone: employerLoginPhone,
+  })
+  .strict();
+
+export const employerLoginOtpVerifySchema = z
+  .object({
+    phone: employerLoginPhone,
+    otp: z.string().trim().min(4).max(8),
+    name: z
+      .union([z.string(), z.undefined(), z.null()])
+      .optional()
+      .transform((value) => (typeof value === 'string' ? value.trim() : ''))
+      .superRefine((value, ctx) => {
+        if (!value) return;
+        if (value.length < 2) {
+          ctx.addIssue({ code: 'custom', message: 'Name must be at least 2 characters' });
+        }
+        if (value.length > 120) {
+          ctx.addIssue({ code: 'custom', message: 'Name must be at most 120 characters' });
+        }
+      }),
+  })
+  .strict();
+
 export const employerOtpSendSchema = z
   .object({
     channel: z.enum(['phone', 'email']),
@@ -150,5 +193,7 @@ export const employerOtpVerifySchema = z
 
 export type EmployerRegisterInput = z.infer<typeof employerRegisterSchema>;
 export type EmployerLoginInput = z.infer<typeof employerLoginSchema>;
+export type EmployerLoginOtpSendInput = z.infer<typeof employerLoginOtpSendSchema>;
+export type EmployerLoginOtpVerifyInput = z.infer<typeof employerLoginOtpVerifySchema>;
 export type EmployerOtpSendInput = z.infer<typeof employerOtpSendSchema>;
 export type EmployerVerifyOtpInput = z.infer<typeof employerOtpVerifySchema>;
