@@ -18,6 +18,12 @@ import type {
 } from '../validators/contentBanner.validator';
 import type { FaqCreateInput, FaqQuery, FaqUpdateInput } from '../validators/faq.validator';
 import type {
+  RecruiterTestimonialCreateInput,
+  RecruiterTestimonialQuery,
+  RecruiterTestimonialUpdateInput,
+} from '../validators/recruiterTestimonial.validator';
+import { recruiterTestimonialService } from '../services/recruiterTestimonial.service';
+import type {
   AdminNotificationQuery,
   AdminNotificationSendInput,
   NotificationTemplateCreateInput,
@@ -153,6 +159,61 @@ export class AdminContentController {
   async deleteFaq(req: Request, res: Response, next: NextFunction) {
     try {
       sendSuccess(res, await faqService.remove(idParam(req)), 'FAQ deleted');
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  // Recruiter testimonials
+  async listRecruiterTestimonials(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await recruiterTestimonialService.list(
+        (req as ReqQ<RecruiterTestimonialQuery>).validatedQuery!,
+      );
+      sendSuccess(res, data, 'Recruiter testimonials fetched successfully');
+    } catch (e) {
+      next(e);
+    }
+  }
+  async getRecruiterTestimonial(req: Request, res: Response, next: NextFunction) {
+    try {
+      sendSuccess(
+        res,
+        await recruiterTestimonialService.getById(idParam(req)),
+        'Recruiter testimonial fetched',
+      );
+    } catch (e) {
+      next(e);
+    }
+  }
+  async createRecruiterTestimonial(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await recruiterTestimonialService.create(
+        req.body as RecruiterTestimonialCreateInput,
+      );
+      sendSuccess(res, data, 'Recruiter testimonial created', HTTP_STATUS.CREATED);
+    } catch (e) {
+      next(e);
+    }
+  }
+  async updateRecruiterTestimonial(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await recruiterTestimonialService.update(
+        idParam(req),
+        req.body as RecruiterTestimonialUpdateInput,
+      );
+      sendSuccess(res, data, 'Recruiter testimonial updated');
+    } catch (e) {
+      next(e);
+    }
+  }
+  async deleteRecruiterTestimonial(req: Request, res: Response, next: NextFunction) {
+    try {
+      sendSuccess(
+        res,
+        await recruiterTestimonialService.remove(idParam(req)),
+        'Recruiter testimonial deleted',
+      );
     } catch (e) {
       next(e);
     }

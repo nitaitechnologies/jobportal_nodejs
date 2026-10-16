@@ -8,6 +8,10 @@ locationRouter.get('/', validatePublicLocationQuery, (req, res, next) => {
   void locationController.listPublic(req, res, next);
 });
 
+locationRouter.get('/hiring-hubs', (req, res, next) => {
+  void locationController.listHiringHubs(req, res, next);
+});
+
 locationRouter.get('/:slug/children', (req, res, next) => {
   void locationController.getChildren(req, res, next);
 });

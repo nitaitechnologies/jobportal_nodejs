@@ -24,6 +24,20 @@ export class LocationController {
     }
   }
 
+  async listHiringHubs(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const raw = typeof req.query.slugs === 'string' ? req.query.slugs : '';
+      const slugs = raw
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
+      const data = await locationService.listHiringHubs(slugs);
+      sendSuccess(res, data, 'Hiring hubs fetched successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getPublicBySlug(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const slug = typeof req.params.slug === 'string' ? req.params.slug : '';

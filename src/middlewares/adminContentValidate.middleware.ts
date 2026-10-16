@@ -21,6 +21,12 @@ import {
   faqUpdateSchema,
 } from '../validators/faq.validator';
 import {
+  recruiterTestimonialCreateSchema,
+  recruiterTestimonialIdParamSchema,
+  recruiterTestimonialQuerySchema,
+  recruiterTestimonialUpdateSchema,
+} from '../validators/recruiterTestimonial.validator';
+import {
   adminNotificationQuerySchema,
   adminNotificationSendSchema,
   notificationTemplateCreateSchema,
@@ -96,6 +102,19 @@ export const validateFaqQuery = makeQueryValidator(faqQuerySchema);
 export const validateFaqCreate = makeBodyValidator(faqCreateSchema);
 export const validateFaqUpdate = makeBodyValidator(faqUpdateSchema);
 export const validateFaqIdParam = makeParamValidator(faqIdParamSchema);
+
+export const validateRecruiterTestimonialQuery = makeQueryValidator(
+  recruiterTestimonialQuerySchema,
+);
+export const validateRecruiterTestimonialCreate = makeBodyValidator(
+  recruiterTestimonialCreateSchema,
+);
+export const validateRecruiterTestimonialUpdate = makeBodyValidator(
+  recruiterTestimonialUpdateSchema,
+);
+export const validateRecruiterTestimonialIdParam = makeParamValidator(
+  recruiterTestimonialIdParamSchema,
+);
 
 export const validateAdminNotificationQuery = makeQueryValidator(adminNotificationQuerySchema);
 export const validateAdminNotificationSend = makeBodyValidator(adminNotificationSendSchema);

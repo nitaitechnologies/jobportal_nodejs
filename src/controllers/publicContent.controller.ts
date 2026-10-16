@@ -1,10 +1,11 @@
 import { NextFunction, Request, Response } from 'express';
 import { contentBannerService } from '../services/contentBanner.service';
 import { faqService } from '../services/faq.service';
+import { recruiterTestimonialService } from '../services/recruiterTestimonial.service';
 import { sendSuccess } from '../utils/apiResponse';
 
 /**
- * Public CMS content (banners + FAQs) — no auth.
+ * Public CMS content (banners + FAQs + recruiter testimonials) — no auth.
  * Sheets 419 / 422.
  */
 export class PublicContentController {
@@ -35,6 +36,18 @@ export class PublicContentController {
         limit: Number.isFinite(rawLimit) ? rawLimit : 100,
       });
       sendSuccess(res, data, 'FAQs fetched successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async listRecruiterTestimonials(req: Request, res: Response, next: NextFunction) {
+    try {
+      const rawLimit = typeof req.query.limit === 'string' ? Number(req.query.limit) : 20;
+      const data = await recruiterTestimonialService.listPublic(
+        Number.isFinite(rawLimit) ? rawLimit : 20,
+      );
+      sendSuccess(res, data, 'Recruiter testimonials fetched successfully');
     } catch (error) {
       next(error);
     }

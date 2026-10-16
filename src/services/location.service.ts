@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { HTTP_STATUS } from '../constants';
 import type { LocationType } from '../constants/enums';
+import { Candidate } from '../models/Candidate';
 import { Job } from '../models/Job';
 import { Location } from '../models/Location';
 import { AppError } from '../utils/AppError';
@@ -593,6 +594,75 @@ export class LocationService {
       deactivated: false,
       id: location._id.toString(),
     };
+  }
+
+  /**
+   * Homepage hiring hubs: live job + candidate counts for selected city slugs.
+   */
+  async listHiringHubs(slugs: string[]) {
+    const uniqueSlugs = Array.from(
+      new Set(slugs.map((slug) => slug.trim().toLowerCase()).filter(Boolean)),
+    ).slice(0, 12);
+    if (!uniqueSlugs.length) {
+      return { hubs: [] as Array<Record<string, unknown>> };
+    }
+
+    const locations = await Location.find({
+      slug: { $in: uniqueSlugs },
+      type: 'city',
+      status: 'active',
+    }).lean();
+
+    const bySlug = new Map(locations.map((item) => [item.slug, item]));
+    const ordered = uniqueSlugs
+      .map((slug) => bySlug.get(slug))
+      .filter((item): item is (typeof locations)[number] => Boolean(item));
+
+    if (!ordered.length) {
+      return { hubs: [] as Array<Record<string, unknown>> };
+    }
+
+    const jobCounts = await getPublishedJobCountsForLocations(
+      ordered.map((item) => item._id as mongoose.Types.ObjectId),
+    );
+
+    const CITY_ALIASES: Record<string, string[]> = {
+      delhi: ['delhi', 'new delhi', 'ncr', 'delhi ncr'],
+      mumbai: ['mumbai', 'bombay'],
+      bengaluru: ['bengaluru', 'bangalore'],
+      hyderabad: ['hyderabad'],
+      pune: ['pune'],
+      kolkata: ['kolkata', 'calcutta'],
+      chennai: ['chennai', 'madras'],
+      noida: ['noida'],
+      gurugram: ['gurugram', 'gurgaon'],
+    };
+
+    const hubs = await Promise.all(
+      ordered.map(async (location) => {
+        const aliases = CITY_ALIASES[location.slug] ?? [location.name];
+        const pattern = aliases
+          .concat(location.name)
+          .map((value) => escapeRegex(value.trim()))
+          .filter(Boolean)
+          .join('|');
+        const locationRx = new RegExp(pattern, 'i');
+        const candidateCount = await Candidate.countDocuments({
+          $or: [{ currentLocation: locationRx }, { preferredLocations: locationRx }],
+        });
+
+        return {
+          id: location._id.toString(),
+          slug: location.slug,
+          name: location.name,
+          state: location.stateCode ?? '',
+          jobCount: jobCounts.get(location._id.toString()) ?? 0,
+          candidateCount,
+        };
+      }),
+    );
+
+    return { hubs };
   }
 }
 
