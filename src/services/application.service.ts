@@ -34,6 +34,10 @@ import {
 import { trackSafely } from './analytics.service';
 import { sendEmail } from './email.service';
 import { candidateSafetyService } from './candidateSafety.service';
+import { walletService } from './wallet.service';
+
+/** Wallet credits charged per applicants CSV export. */
+const APPLICANTS_CSV_EXPORT_CREDITS = 10;
 import type {
   ApplicationApplyInput,
   ApplicationBulkMessageInput,
@@ -1387,11 +1391,24 @@ export class ApplicationService {
     };
   }
 
-  /** CSV export of applicants (sheet 271). */
+  /** CSV export of applicants (sheet 271). Charges wallet credits. */
   async exportEmployerCsv(
     employer: AuthenticatedEmployer,
     query: EmployerApplicationExportQuery = {},
   ) {
+    await walletService.debit({
+      companyId: employer.companyId,
+      credits: APPLICANTS_CSV_EXPORT_CREDITS,
+      type: 'spend_export',
+      description: 'Applicants CSV export',
+      metadata: {
+        jobId: query.jobId ?? null,
+        status: query.status ?? null,
+        q: query.q ?? null,
+        credits: APPLICANTS_CSV_EXPORT_CREDITS,
+      },
+    });
+
     const list = await this.listEmployer(
       employer,
       {

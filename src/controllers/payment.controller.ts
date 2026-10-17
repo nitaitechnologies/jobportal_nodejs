@@ -108,6 +108,30 @@ export class PaymentController {
     }
   }
 
+  async spendFixed(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const employer = requireEmployer(req);
+      const action = typeof req.body?.action === 'string' ? req.body.action : '';
+      if (action !== 'database_export') {
+        throw new AppError('Unsupported wallet action', HTTP_STATUS.BAD_REQUEST);
+      }
+      const balance = await walletService.debit({
+        companyId: employer.companyId,
+        credits: 10,
+        type: 'spend_export',
+        description: 'Database candidate export',
+        metadata: { action },
+      });
+      sendSuccess(
+        res,
+        { creditsSpent: 10, balance },
+        'Credits used successfully',
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async listWalletTransactions(
     req: Request,
     res: Response,

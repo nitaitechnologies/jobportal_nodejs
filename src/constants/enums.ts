@@ -304,6 +304,7 @@ export const WALLET_TXN_TYPES = [
   'spend_boost',
   'spend_featured',
   'spend_job_post',
+  'spend_export',
   'refund',
   'adjustment',
 ] as const;

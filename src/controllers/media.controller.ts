@@ -80,6 +80,7 @@ export class MediaController {
     try {
       const { media, buffer } = await mediaUploadService.downloadCandidateResume(
         requireCandidate(req),
+        typeof req.query.id === 'string' ? req.query.id : undefined,
       );
       res.setHeader('Content-Type', media.mimeType);
       const safeName = media.originalName
@@ -101,6 +102,26 @@ export class MediaController {
     try {
       const data = await mediaUploadService.deleteCandidateResume(requireCandidate(req));
       sendSuccess(res, data, 'Resume deleted successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async setDefaultResume(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = typeof req.body?.id === 'string' ? req.body.id : '';
+      const data = await mediaUploadService.setDefaultResume(requireCandidate(req), id);
+      sendSuccess(res, data, 'Default resume updated');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteResumeById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = typeof req.params.id === 'string' ? req.params.id : '';
+      const data = await mediaUploadService.deleteResumeById(requireCandidate(req), id);
+      sendSuccess(res, data, 'Resume removed');
     } catch (error) {
       next(error);
     }

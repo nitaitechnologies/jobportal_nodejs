@@ -194,7 +194,8 @@ export function validateEmployerCandidateRecontactCreate(
     next(new AppError('Invalid request body', HTTP_STATUS.BAD_REQUEST));
     return;
   }
-  if (rejectForbidden(req.body as Record<string, unknown>, next)) return;
+  // candidateId is required on this endpoint — do not use EMPLOYER_CANDIDATE_FORBIDDEN_FIELDS.
+  // Zod .strict() already rejects unknown / server-owned fields.
   const data = validateWithSchema(employerCandidateRecontactCreateSchema, req.body, next);
   if (!data) return;
   req.body = data;

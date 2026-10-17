@@ -42,6 +42,21 @@ function idParam(req: Request): string {
   return typeof req.params.id === 'string' ? req.params.id : '';
 }
 
+employerCandidateRouter.post('/bulk-unlock', async (req, res, next) => {
+  try {
+    const ids = Array.isArray(req.body?.candidateIds)
+      ? req.body.candidateIds.filter((id: unknown): id is string => typeof id === 'string')
+      : [];
+    const data = await employerCandidateService.bulkUnlockContacts(
+      requireEmployerContext(req),
+      ids,
+    );
+    sendSuccess(res, data, 'Contacts unlocked successfully');
+  } catch (error) {
+    next(error);
+  }
+});
+
 employerCandidateRouter.get('/', validateEmployerCandidateListQuery, async (req, res, next) => {
   try {
     const query = (req as Request & { validatedQuery: EmployerCandidateListQuery }).validatedQuery;

@@ -63,6 +63,14 @@ candidateProfileRouter.get('/resumes', (req, res, next) => {
   void mediaController.listSelectableResumes(req, res, next);
 });
 
+candidateProfileRouter.post('/resumes/default', (req, res, next) => {
+  void mediaController.setDefaultResume(req, res, next);
+});
+
+candidateProfileRouter.delete('/resumes/:id', (req, res, next) => {
+  void mediaController.deleteResumeById(req, res, next);
+});
+
 candidateProfileRouter.get('/resume', (req, res, next) => {
   void mediaController.getCandidateResume(req, res, next);
 });

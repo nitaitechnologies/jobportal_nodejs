@@ -119,7 +119,14 @@ export class MediaUploadService {
 
   async uploadCandidateResume(candidate: AuthenticatedCandidate, file: Express.Multer.File) {
     const { user, candidate: candidateDoc } = await loadCandidatePair(candidate.userId);
-    const previous = candidateDoc.resume ?? '';
+    const existingCount = await MediaFile.countDocuments({
+      ownerUserId: candidate.userId,
+      category: 'candidate_resume',
+      status: 'active',
+    });
+    if (existingCount >= 5) {
+      throw new AppError('You can keep up to 5 resumes. Remove one to add another.', HTTP_STATUS.BAD_REQUEST);
+    }
 
     const uploaded = await uploadMedia({
       category: 'candidate_resume',
@@ -131,7 +138,7 @@ export class MediaUploadService {
       declaredMime: file.mimetype,
       buffer: file.buffer,
       size: file.size,
-      previousRef: previous,
+      previousRef: '',
     });
 
     candidateDoc.resume = uploaded.domainRef;
@@ -238,9 +245,9 @@ export class MediaUploadService {
     };
   }
 
-  async downloadCandidateResume(candidate: AuthenticatedCandidate) {
+  async downloadCandidateResume(candidate: AuthenticatedCandidate, mediaRef?: string) {
     const { candidate: candidateDoc } = await loadCandidatePair(candidate.userId);
-    const mediaId = parseMediaRef(candidateDoc.resume);
+    const mediaId = parseMediaRef(mediaRef || candidateDoc.resume);
     if (!mediaId) {
       throw new AppError('Resume file not found', HTTP_STATUS.NOT_FOUND);
     }
@@ -274,6 +281,48 @@ export class MediaUploadService {
         percentage: completion.percentage,
       },
     };
+  }
+
+  async setDefaultResume(candidate: AuthenticatedCandidate, resumeId: string) {
+    const { candidate: candidateDoc } = await loadCandidatePair(candidate.userId);
+    const mediaId = parseMediaRef(resumeId) || resumeId.replace(/^media:/, '').trim();
+    if (!mediaId) {
+      throw new AppError('Choose a resume', HTTP_STATUS.BAD_REQUEST);
+    }
+    const media = await getActiveMediaById(mediaId);
+    if (media.ownerUserId.toString() !== candidate.userId || media.category !== 'candidate_resume') {
+      throw new AppError('Resume access denied', HTTP_STATUS.FORBIDDEN);
+    }
+    candidateDoc.resume = `media:${mediaId}`;
+    await candidateDoc.save();
+    return this.listSelectableResumes(candidate);
+  }
+
+  async deleteResumeById(candidate: AuthenticatedCandidate, resumeId: string) {
+    const { user, candidate: candidateDoc } = await loadCandidatePair(candidate.userId);
+    const mediaId = parseMediaRef(resumeId) || resumeId.replace(/^media:/, '').trim();
+    if (!mediaId) {
+      throw new AppError('Choose a resume', HTTP_STATUS.BAD_REQUEST);
+    }
+    const currentId = parseMediaRef(candidateDoc.resume ?? '');
+    await deleteMediaByRef(`media:${mediaId}`, { ownerUserId: candidate.userId });
+
+    if (currentId === mediaId) {
+      const next = await MediaFile.findOne({
+        ownerUserId: candidate.userId,
+        category: 'candidate_resume',
+        status: 'active',
+      }).sort({ createdAt: -1 });
+      candidateDoc.resume = next ? `media:${next._id.toString()}` : '';
+      const completion = getCandidateProfileCompletionDetails(
+        { name: user.name, phone: user.phone, avatar: user.avatar },
+        candidateDoc,
+      );
+      candidateDoc.profileCompletion = completion.percentage;
+      await candidateDoc.save();
+    }
+
+    return this.listSelectableResumes(candidate);
   }
 
   async uploadCandidateVideoResume(

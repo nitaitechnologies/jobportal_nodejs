@@ -35,6 +35,10 @@ employerPaymentRouter.get('/wallet', (req, res, next) => {
   void paymentController.getWallet(req, res, next);
 });
 
+employerPaymentRouter.post('/wallet/spend', (req, res, next) => {
+  void paymentController.spendFixed(req, res, next);
+});
+
 employerPaymentRouter.get(
   '/wallet/transactions',
   validateWalletTxnQuery,

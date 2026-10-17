@@ -677,7 +677,11 @@ export class EmployerCandidateService {
     return { phone: user.phone ?? '', email: user.email ?? '' };
   }
 
-  async unlockContact(employer: AuthenticatedEmployer, candidateId: string) {
+  async unlockContact(
+    employer: AuthenticatedEmployer,
+    candidateId: string,
+    options?: { prepaid?: boolean },
+  ) {
     await this.assertVisibleCandidate(employer, candidateId);
 
     const existing = await this.getContactIfUnlocked(employer, candidateId);
@@ -716,9 +720,14 @@ export class EmployerCandidateService {
       entitlements.usage.contactUnlocksUsed < entitlements.limits.contactUnlockLimit;
     let creditsSpent = 0;
     let paidWithWallet = false;
-    const packageWallets = await companyUsesPackageWallets(employer.companyId);
+    const packageWallets = options?.prepaid
+      ? false
+      : await companyUsesPackageWallets(employer.companyId);
 
-    if (packageWallets) {
+    if (options?.prepaid) {
+      creditsSpent = 0;
+      paidWithWallet = false;
+    } else if (packageWallets) {
       await walletService.debitBucket({
         companyId: employer.companyId,
         bucket: 'unlocks',
@@ -788,6 +797,86 @@ export class EmployerCandidateService {
       remaining,
       alreadyUnlocked: false,
       paidWithWallet,
+    };
+  }
+
+  /** Charge 10 unlock/wallet credits when available, otherwise use the same plan unlock as View Phone. */
+  async bulkUnlockContacts(employer: AuthenticatedEmployer, candidateIds: string[]) {
+    const unique = [...new Set(candidateIds.map((id) => id.trim()).filter(Boolean))].slice(0, 100);
+    if (!unique.length) {
+      throw new AppError('Select at least one candidate', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const snapshot = await walletService.getWallet(employer.companyId);
+    const usesPackages = await companyUsesPackageWallets(employer.companyId);
+    let creditsSpent = 0;
+    let balance = snapshot.wallet.balance ?? 0;
+    let prepaid = false;
+
+    if (usesPackages && (snapshot.wallet.unlocks ?? 0) >= 10) {
+      balance = await walletService.debitBucket({
+        companyId: employer.companyId,
+        bucket: 'unlocks',
+        credits: 10,
+        type: 'spend_unlock',
+        description: 'Database bulk unlock',
+        metadata: { action: 'database_bulk_unlock', count: unique.length },
+      });
+      creditsSpent = 10;
+      prepaid = true;
+    } else if ((snapshot.wallet.balance ?? 0) >= 10) {
+      balance = await walletService.debit({
+        companyId: employer.companyId,
+        credits: 10,
+        type: 'spend_unlock',
+        description: 'Database bulk unlock',
+        metadata: { action: 'database_bulk_unlock', count: unique.length },
+      });
+      creditsSpent = 10;
+      prepaid = true;
+    }
+
+    const results: Array<{
+      id: string;
+      ok: boolean;
+      phone?: string;
+      email?: string;
+      alreadyUnlocked?: boolean;
+      error?: string;
+    }> = [];
+
+    for (const id of unique) {
+      try {
+        const unlocked = await this.unlockContact(employer, id, { prepaid });
+        results.push({
+          id,
+          ok: true,
+          phone: unlocked.contact.phone,
+          email: unlocked.contact.email,
+          alreadyUnlocked: unlocked.alreadyUnlocked,
+        });
+      } catch (error) {
+        results.push({
+          id,
+          ok: false,
+          error: error instanceof Error ? error.message : 'Could not unlock',
+        });
+      }
+    }
+
+    const unlocked = results.filter((item) => item.ok).length;
+    const failed = results.filter((item) => !item.ok).length;
+    if (unlocked === 0) {
+      const reason = results.find((item) => item.error)?.error || 'Could not unlock these candidates';
+      throw new AppError(reason, HTTP_STATUS.FORBIDDEN);
+    }
+
+    return {
+      creditsSpent,
+      balance,
+      unlocked,
+      failed,
+      results,
     };
   }
 
