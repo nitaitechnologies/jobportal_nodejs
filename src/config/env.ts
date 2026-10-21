@@ -249,6 +249,21 @@ export const env = {
     process.env.ENABLE_CHAT !== undefined
       ? process.env.ENABLE_CHAT === 'true' || process.env.ENABLE_CHAT === '1'
       : true,
+  /**
+   * Sarkari Naukri sync (government jobs). When enabled, scrapes SOURCE_URL and upserts Mongo.
+   * Source URLs are stored internally and never returned by the public API.
+   */
+  sarkariSyncEnabled:
+    process.env.SARKARI_SYNC_ENABLED === undefined
+      ? true
+      : process.env.SARKARI_SYNC_ENABLED === 'true' || process.env.SARKARI_SYNC_ENABLED === '1',
+  sarkariSourceUrl: (process.env.SARKARI_SOURCE_URL ?? 'https://www.sarkariresult.com/').trim(),
+  sarkariRequestTimeoutMs: parsePositiveInt('SARKARI_REQUEST_TIMEOUT_MS', '12000'),
+  /** 0 = fetch all detail pages */
+  sarkariDetailFetchLimit: Math.max(0, parseInt(process.env.SARKARI_DETAIL_FETCH_LIMIT ?? '0', 10) || 0),
+  sarkariDetailConcurrency: parsePositiveInt('SARKARI_DETAIL_CONCURRENCY', '5'),
+  /** Background resync interval in minutes. 0 disables auto interval (manual POST /sarkari-jobs/sync still works). */
+  sarkariSyncIntervalMinutes: Math.max(0, parseInt(process.env.SARKARI_SYNC_INTERVAL_MINUTES ?? '60', 10) || 0),
   isDevelopment: nodeEnv === 'development',
   isProduction,
 } as const;

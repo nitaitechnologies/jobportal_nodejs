@@ -5,7 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon --watch src --ext ts --exec ts-node src/server.ts",
-    "build": "tsc",
+    "build": "tsc && mkdir -p dist/integrations && cp -R src/integrations/. dist/integrations/",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "NODE_ENV=test jest --runInBand",
@@ -40,6 +40,7 @@
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
+    "cheerio": "^1.2.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
@@ -49,6 +50,7 @@
     "mongoose": "^9.9.5",
     "multer": "^2.3.0",
     "nodemailer": "^10.0.10",
+    "robots-parser": "^3.0.1",
     "sharp": "^0.35.4",
     "socket.io": "^4.8.3",
     "swagger-ui-express": "^5.0.1",
