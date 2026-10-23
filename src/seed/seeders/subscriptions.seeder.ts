@@ -162,8 +162,8 @@ export async function seedSubscriptions(ctx: SeedContext): Promise<void> {
     const employer = ctx.employers[i]!;
 
     // Employer personas + variety:
-    // 0 busy → Professional active near-expiry optional
-    // 1 new → Free trial / free
+    // 0 busy (employer.active) → Professional active — long window so demo UI stays usable
+    // 1 new → Free trial / free (no advanced candidate search)
     // 2 paid → Business or Professional active
     // some → expired / cancelled / none-like free
     let plan: SeedPlanRef;
@@ -175,13 +175,14 @@ export async function seedSubscriptions(ctx: SeedContext): Promise<void> {
     if (i === 0) {
       plan = planBySlug(ctx, 'professional');
       status = 'active';
-      endDate = daysFromNow(12);
+      // Keep walkthrough employer paid for months; short near-expiry broke Hot Leads / Database.
+      endDate = daysFromNow(180);
       autoRenew = true;
     } else if (i === 1) {
       plan = planBySlug(ctx, 'free');
       status = 'trial';
       startDate = daysAgo(3);
-      endDate = daysFromNow(11);
+      endDate = daysFromNow(30);
     } else if (i === 2) {
       plan = planBySlug(ctx, 'business');
       status = 'active';
