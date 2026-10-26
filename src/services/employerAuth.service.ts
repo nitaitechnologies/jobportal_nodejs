@@ -147,7 +147,17 @@ export class EmployerAuthService {
       throw new AppError('An account with this phone already exists', HTTP_STATUS.CONFLICT);
     }
 
-    const passwordHash = await hashPassword(input.password);
+    const passwordless = !input.password?.trim();
+    if (passwordless) {
+      // Same OTP key as login/send — Create account flow must verify mobile first.
+      otpService.verify(`employer:login:${input.phone}`, input.otp);
+    }
+
+    // OTP-first signup may omit password — store a random hash so password login stays locked.
+    const rawPassword = passwordless
+      ? randomBytes(32).toString('hex')
+      : input.password;
+    const passwordHash = await hashPassword(rawPassword);
     const slug = await createUniqueSlug(input.companyName, async (value) => {
       const existing = await Company.findOne({ slug: value }).select('_id');
       return Boolean(existing);
@@ -168,6 +178,7 @@ export class EmployerAuthService {
         passwordHash,
         role: 'employer',
         status: 'active',
+        phoneVerified: passwordless,
       });
       createdUserId = user._id;
 
@@ -288,8 +299,49 @@ export class EmployerAuthService {
     dummy: boolean;
     channel: 'sms' | 'email' | 'none';
     isNewUser: boolean;
+    /** Present when the phone already belongs to a user — client should OTP-login that role. */
+    accountRole?: 'employer' | 'candidate' | null;
   }> {
-    const existing = await this.lookupPhoneForEmployerOtp(input.phone);
+    const existingUser = await User.findOne({ phone: input.phone }).select(
+      '_id role status deletedAt',
+    );
+
+    if (existingUser && !existingUser.deletedAt && existingUser.role === 'employer') {
+      // Validates employer + company are active; throws 403 if blocked.
+      await this.lookupPhoneForEmployerOtp(input.phone);
+      const result = otpService.send(`employer:login:${input.phone}`, {
+        destination: input.phone,
+        channel: 'sms',
+        purpose: 'employer_login',
+      });
+      return {
+        phone: input.phone,
+        expiresIn: result.expiresIn,
+        dummy: result.dummy,
+        channel: result.channel,
+        isNewUser: false,
+        accountRole: 'employer',
+      };
+    }
+
+    if (existingUser && !existingUser.deletedAt && existingUser.role === 'candidate') {
+      // Phone already has a job-seeker account — send candidate OTP so login can continue.
+      const result = otpService.send(input.phone, {
+        destination: input.phone,
+        channel: 'sms',
+        purpose: 'candidate_login',
+      });
+      return {
+        phone: input.phone,
+        expiresIn: result.expiresIn,
+        dummy: result.dummy,
+        channel: result.channel,
+        isNewUser: false,
+        accountRole: 'candidate',
+      };
+    }
+
+    // Brand-new number → client routes to employer register (OTP verified there).
     const result = otpService.send(`employer:login:${input.phone}`, {
       destination: input.phone,
       channel: 'sms',
@@ -300,7 +352,8 @@ export class EmployerAuthService {
       expiresIn: result.expiresIn,
       dummy: result.dummy,
       channel: result.channel,
-      isNewUser: !existing,
+      isNewUser: true,
+      accountRole: null,
     };
   }
 

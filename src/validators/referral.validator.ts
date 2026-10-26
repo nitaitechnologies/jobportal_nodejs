@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 export const optionalReferralCode = z
   .union([z.string(), z.undefined(), z.null()])
-  .transform((value) => (typeof value === 'string' ? value.trim().toLowerCase() : ''))
-  .optional();
+  .optional()
+  .transform((value) => (typeof value === 'string' ? value.trim().toLowerCase() : ''));
 
 export const adminReferralPointsSchema = z
   .object({

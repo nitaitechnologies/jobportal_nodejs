@@ -45,14 +45,17 @@ export const employerRegisterSchema = z.object({
         });
       }
     }),
+  /**
+   * Optional when the employer signed up via mobile OTP.
+   * Empty / omitted → server stores a random unusable password hash.
+   * `.optional()` must come before transform so Zod 4 allows a missing key.
+   */
   password: z
     .union([z.string(), z.undefined(), z.null()])
+    .optional()
     .transform((value) => (typeof value === 'string' ? value : ''))
     .superRefine((value, ctx) => {
-      if (!value) {
-        ctx.addIssue({ code: 'custom', message: 'Password is required' });
-        return;
-      }
+      if (!value) return;
       if (value.length < 8) {
         ctx.addIssue({
           code: 'custom',
@@ -93,10 +96,34 @@ export const employerRegisterSchema = z.object({
         });
       }
     }),
+  /**
+   * Required for passwordless (OTP) signup. Verified against the login OTP
+   * sent to this phone before the account is created.
+   */
+  otp: z
+    .union([z.string(), z.undefined(), z.null()])
+    .optional()
+    .transform((value) => (typeof value === 'string' ? value.trim() : '')),
   /** Optional UI job role → mapped to designation; new companies always start as owner. */
   teamRole: z.enum(['owner', 'hr', 'recruiter']).optional(),
   designation: z.string().trim().max(120).optional(),
   referralCode: optionalReferralCode,
+}).superRefine((value, ctx) => {
+  // Passwordless signup must prove phone ownership via OTP.
+  if (!value.password && !value.otp) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['otp'],
+      message: 'OTP is required to create an employer account',
+    });
+  }
+  if (value.otp && (value.otp.length < 4 || value.otp.length > 8)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['otp'],
+      message: 'OTP must be 4–8 digits',
+    });
+  }
 });
 
 export const employerLoginSchema = z.object({

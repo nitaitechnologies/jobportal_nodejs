@@ -213,14 +213,8 @@ export class CandidateAuthService {
   async verifyOtp(input: CandidateOtpVerifyInput): Promise<CandidateAuthResult> {
     const existing = await User.findOne({ phone: input.phone, role: 'candidate' });
     const isReturning = Boolean(existing && !existing.deletedAt);
-    const name = input.name?.trim() ?? '';
-
-    if (!isReturning && !name) {
-      throw new AppError(
-        'Name is required for first-time mobile signup',
-        HTTP_STATUS.BAD_REQUEST,
-      );
-    }
+    // Name is optional at OTP login — profile page collects full details after sign-in.
+    const name = input.name?.trim() || 'Job seeker';
 
     otpService.verify(input.phone, input.otp);
 
