@@ -12,7 +12,8 @@ const employerCandidateSearchFiltersSchema = new Schema(
     radiusKm: { type: Number, min: 1, max: 500 },
     experienceMin: { type: Number, min: 0, max: 60 },
     experienceMax: { type: Number, min: 0, max: 60 },
-    education: { type: String, trim: true, maxlength: 120, default: '' },
+    /** One or more education levels (CSV / multi-select from database filters). */
+    education: { type: [String], default: [] },
     expectedSalaryMin: { type: Number, min: 0 },
     expectedSalaryMax: { type: Number, min: 0 },
     jobType: { type: String, enum: [...CANDIDATE_JOB_TYPES, ''], default: '' },

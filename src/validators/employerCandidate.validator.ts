@@ -37,7 +37,7 @@ export const employerCandidateSearchFiltersSchema = z
     radiusKm: z.coerce.number().min(1).max(500).optional(),
     experienceMin: z.coerce.number().min(0).max(60).optional(),
     experienceMax: z.coerce.number().min(0).max(60).optional(),
-    education: z.string().trim().max(120).optional(),
+    education: csvOrArraySchema,
     expectedSalaryMin: z.coerce.number().min(0).optional(),
     expectedSalaryMax: z.coerce.number().min(0).optional(),
     jobType: z.enum(CANDIDATE_JOB_TYPES).optional(),

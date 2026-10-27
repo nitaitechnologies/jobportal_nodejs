@@ -128,7 +128,17 @@ export function buildPublicVisibilityFilter(
     status: 'published',
     deletedAt: null,
     companyId: { $in: companyIds },
-    $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
+    $and: [
+      { $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }] },
+      // Align with apply gate: past deadline ⇒ not open for candidates
+      {
+        $or: [
+          { applicationDeadline: null },
+          { applicationDeadline: { $exists: false } },
+          { applicationDeadline: { $gt: now } },
+        ],
+      },
+    ],
   };
 }
 
@@ -143,17 +153,66 @@ const EDUCATION_PATTERNS: Record<string, string[]> = {
   postgraduate: ['post\\s*grad', 'postgraduate', 'master', 'mba', 'm\\.?tech', 'msc', 'pg\\b'],
 };
 
-export function buildEducationFilter(levels?: string[]): JobSearchFilter | null {
-  if (!levels?.length) return null;
+export const EDUCATION_LEVEL_ORDER = ['10th', '12th', 'graduate', 'postgraduate'] as const;
+export type EducationLevel = (typeof EDUCATION_LEVEL_ORDER)[number];
+
+function normalizeEducationLevel(value: string): string {
+  const key = value.trim().toLowerCase().replace(/\s+/g, '');
+  if (key.startsWith('10')) return '10th';
+  if (key.startsWith('12')) return '12th';
+  if (key.includes('post') || key === 'pg' || key.startsWith('master') || key === 'mba') {
+    return 'postgraduate';
+  }
+  if (key.includes('grad') || key.startsWith('bachelor') || key === 'degree') return 'graduate';
+  return key;
+}
+
+/** Expand selected education floors to include every higher level (selected and above). */
+export function expandEducationLevelsAndAbove(levels?: string[]): string[] {
+  if (!levels?.length) return [];
+  const mapped = levels.map(normalizeEducationLevel);
+  const ranks = mapped
+    .map((level) => EDUCATION_LEVEL_ORDER.indexOf(level as EducationLevel))
+    .filter((index) => index >= 0);
+  if (!ranks.length) return [...new Set(mapped)];
+  const min = Math.min(...ranks);
+  return [...EDUCATION_LEVEL_ORDER.slice(min)];
+}
+
+function educationPatternSource(levels: string[]): string[] {
   const patterns: string[] = [];
   for (const level of levels) {
-    const key = level.trim().toLowerCase();
-    const aliases = EDUCATION_PATTERNS[key] ?? [escapeRegex(key)];
+    const key = normalizeEducationLevel(level);
+    const aliases = EDUCATION_PATTERNS[key] ?? [escapeRegex(level.trim())];
     patterns.push(...aliases);
   }
+  return patterns;
+}
+
+export function buildEducationFilter(levels?: string[]): JobSearchFilter | null {
+  if (!levels?.length) return null;
+  const patterns = educationPatternSource(levels);
   if (!patterns.length) return null;
   return {
     education: { $regex: patterns.join('|'), $options: 'i' },
+  };
+}
+
+/** Mongo filter for candidate.education[] — selected level and above. */
+export function buildCandidateEducationFilter(
+  levels?: string[],
+): Record<string, unknown> | null {
+  if (!levels?.length) return null;
+  const expanded = expandEducationLevelsAndAbove(levels);
+  const patterns = educationPatternSource(expanded.length ? expanded : levels);
+  if (!patterns.length) return null;
+  const regex = patterns.join('|');
+  return {
+    $or: [
+      { 'education.degree': { $regex: regex, $options: 'i' } },
+      { 'education.fieldOfStudy': { $regex: regex, $options: 'i' } },
+      { 'education.institution': { $regex: regex, $options: 'i' } },
+    ],
   };
 }
 

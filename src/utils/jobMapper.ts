@@ -245,6 +245,7 @@ export function mapPublicJob(
     interviewProcess: core.interviewProcess,
     deadline: core.deadline,
     expiresAt: core.expiresAt,
+    status: core.status,
     applicationMethod: core.applicationMethod,
     featured: core.featured,
     urgent: core.urgent,
@@ -331,6 +332,9 @@ export function mapPublicJobSummary(
     urgent: Boolean(job.urgent),
     distanceKm: extras?.distanceKm ?? null,
     publishedAt: job.publishedAt ?? null,
+    deadline: job.applicationDeadline ?? null,
+    expiresAt: job.expiresAt ?? null,
+    status: job.status,
     company: extras?.company
       ? {
           id: extras.company.id,

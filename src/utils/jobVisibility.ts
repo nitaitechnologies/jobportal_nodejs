@@ -4,10 +4,13 @@ export interface JobVisibilityFields {
   status?: string | null;
   deletedAt?: Date | null;
   expiresAt?: Date | null;
+  /** When set and past, applications are closed — hide from public Find Jobs. */
+  applicationDeadline?: Date | null;
 }
 
 /**
  * Same public eligibility used by GET /jobs, GET /jobs/:slug, and saved-job writes.
+ * Past applicationDeadline matches apply rejection (do not list closed-for-apply jobs).
  */
 export function isJobPubliclyVisible(
   job: JobVisibilityFields,
@@ -18,6 +21,9 @@ export function isJobPubliclyVisible(
     return false;
   }
   if (job.expiresAt && job.expiresAt.getTime() <= now.getTime()) {
+    return false;
+  }
+  if (job.applicationDeadline && job.applicationDeadline.getTime() <= now.getTime()) {
     return false;
   }
   if (!company || !isCompanyPubliclyVisible(company)) {

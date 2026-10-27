@@ -13,6 +13,7 @@ import { MediaFile } from '../models/MediaFile';
 import type { AuthenticatedEmployer } from '../types/auth.types';
 import { AppError } from '../utils/AppError';
 import { noticeDaysUntil } from '../utils/availability';
+import { buildCandidateEducationFilter } from '../utils/jobSearchQuery';
 import { haversineKm } from '../utils/geo';
 import { parseMediaRef } from '../utils/mediaMapper';
 import { scoreJobMatch, type JobMatchSource, type MatchBreakdown } from '../utils/matchScore';
@@ -50,7 +51,7 @@ export type EmployerCandidateQuery = {
   radiusKm?: number;
   experienceMin?: number;
   experienceMax?: number;
-  education?: string;
+  education?: string | string[];
   expectedSalaryMin?: number;
   expectedSalaryMax?: number;
   jobType?: string;
@@ -189,7 +190,9 @@ function buildListFilter(query: EmployerCandidateQuery): Record<string, unknown>
   }
 
   if (query.location?.trim()) {
-    filter.currentLocation = new RegExp(escapeRegex(query.location.trim()), 'i');
+    const locationNeedle = query.location.trim();
+    // Match city/area against profile location text (partial, case-insensitive).
+    filter.currentLocation = new RegExp(escapeRegex(locationNeedle), 'i');
   }
 
   if (query.experienceMin !== undefined || query.experienceMax !== undefined) {
@@ -203,13 +206,22 @@ function buildListFilter(query: EmployerCandidateQuery): Record<string, unknown>
     filter.totalExperience = { $lte: 0 };
   }
 
-  if (query.education?.trim()) {
-    const pattern = new RegExp(escapeRegex(query.education.trim()), 'i');
-    filter.$or = [
-      { 'education.degree': pattern },
-      { 'education.fieldOfStudy': pattern },
-      { 'education.institution': pattern },
-    ];
+  const educationLevels = Array.isArray(query.education)
+    ? query.education
+    : typeof query.education === 'string' && query.education.trim()
+      ? query.education.split(',').map((item) => item.trim()).filter(Boolean)
+      : undefined;
+  if (educationLevels?.length) {
+    const educationFilter = buildCandidateEducationFilter(educationLevels);
+    if (educationFilter) {
+      const clause = educationFilter.$or
+        ? { $or: educationFilter.$or }
+        : educationFilter;
+      filter.$and = [
+        ...(Array.isArray(filter.$and) ? filter.$and : []),
+        clause,
+      ];
+    }
   }
 
   if (query.expectedSalaryMin !== undefined || query.expectedSalaryMax !== undefined) {
@@ -506,7 +518,19 @@ export class EmployerCandidateService {
       if (!user) return [];
 
       if (needle) {
-        const hay = `${user.name} ${candidate.headline ?? ''} ${candidate.currentJobTitle ?? ''} ${(candidate.skills ?? []).join(' ')}`.toLowerCase();
+        const work = (candidate.workExperience ?? [])
+          .map((item) => `${item.jobTitle ?? ''} ${item.company ?? ''}`)
+          .join(' ');
+        const hay = [
+          user.name,
+          candidate.headline ?? '',
+          candidate.currentJobTitle ?? '',
+          candidate.currentLocation ?? '',
+          work,
+          (candidate.skills ?? []).join(' '),
+        ]
+          .join(' ')
+          .toLowerCase();
         if (!hay.includes(needle)) return [];
       }
 
@@ -514,12 +538,16 @@ export class EmployerCandidateService {
       if (geoActive) {
         const lat = candidate.latitude;
         const lng = candidate.longitude;
-        if (typeof lat !== 'number' || typeof lng !== 'number') return [];
-        distanceKm = haversineKm(
-          { latitude: query.lat!, longitude: query.lng! },
-          { latitude: lat, longitude: lng },
-        );
-        if (distanceKm > query.radiusKm!) return [];
+        if (typeof lat === 'number' && typeof lng === 'number') {
+          distanceKm = haversineKm(
+            { latitude: query.lat!, longitude: query.lng! },
+            { latitude: lat, longitude: lng },
+          );
+          if (distanceKm > query.radiusKm!) return [];
+        } else {
+          // Strict radius filters need coordinates; otherwise keep the profile.
+          return [];
+        }
       }
 
       const candidateId = candidate._id.toString();
@@ -959,7 +987,8 @@ export class EmployerCandidateService {
       companyId: companyId(employer),
       employerId: new mongoose.Types.ObjectId(employer.employerId),
       name: input.name,
-      filters: input.filters ?? {},
+      // Zod filters allow multi education/skills; schema stores them as arrays.
+      filters: (input.filters ?? {}) as Record<string, unknown>,
     });
 
     return {

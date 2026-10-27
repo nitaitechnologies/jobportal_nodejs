@@ -10,6 +10,7 @@ import { Location } from '../models/Location';
 import { User } from '../models/User';
 import type { AuthenticatedEmployer } from '../types/auth.types';
 import { AppError } from '../utils/AppError';
+import { isCompanyPubliclyVisible } from '../utils/companyMapper';
 import { isJobPubliclyVisible } from '../utils/jobVisibility';
 import {
   mapEmployerJob,
@@ -1464,11 +1465,24 @@ export class JobService {
 
   /**
    * Spend one plan job-boost credit, mark the listing boosted, and refresh visibility.
+   * WorkIndia-style: re-boost only allowed 24 hours after the last featuredAt.
    */
   async boost(employer: AuthenticatedEmployer, id: string) {
     const job = await findOwnedJob(id, employer);
     if (job.status !== 'published' && job.status !== 'paused') {
       throw new AppError('Only live jobs can be boosted', HTTP_STATUS.CONFLICT);
+    }
+
+    const BOOST_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+    if (job.featured && job.featuredAt) {
+      const elapsed = Date.now() - new Date(job.featuredAt).getTime();
+      if (Number.isFinite(elapsed) && elapsed < BOOST_COOLDOWN_MS) {
+        const hoursLeft = Math.max(1, Math.ceil((BOOST_COOLDOWN_MS - elapsed) / (60 * 60 * 1000)));
+        throw new AppError(
+          `You can boost this job again after 24 hours. Try again in about ${hoursLeft} hour${hoursLeft === 1 ? '' : 's'}.`,
+          HTTP_STATUS.CONFLICT,
+        );
+      }
     }
 
     const entitlements = await getEmployerEntitlements(employer);
@@ -1964,9 +1978,11 @@ export class JobService {
     slug: string,
     geo?: { lat?: number; lng?: number },
   ) {
+    // Include closed / expired / paused so deep links can show “no longer available”
+    // instead of a hard 404 — but those must not appear in listPublic.
     const job = (await Job.findOne({
       slug: slug.trim().toLowerCase(),
-      status: 'published',
+      status: { $in: ['published', 'closed', 'paused', 'expired'] },
       deletedAt: null,
     })) as JobDocument | null;
 
@@ -1974,30 +1990,29 @@ export class JobService {
       throw new AppError('Job not found', HTTP_STATUS.NOT_FOUND);
     }
 
-    if (job.expiresAt && job.expiresAt.getTime() <= Date.now()) {
-      throw new AppError('Job not found', HTTP_STATUS.NOT_FOUND);
-    }
-
     const company = await Company.findById(job.companyId);
-    if (!company || !isJobPubliclyVisible(job, company)) {
+    if (!company || !isCompanyPubliclyVisible(company)) {
       throw new AppError('Job not found', HTTP_STATUS.NOT_FOUND);
     }
 
-    await Job.updateOne({ _id: job._id }, { $inc: { views: 1 } });
-    job.views = (job.views ?? 0) + 1;
+    const acceptingApplications = isJobPubliclyVisible(job, company);
+    if (acceptingApplications) {
+      await Job.updateOne({ _id: job._id }, { $inc: { views: 1 } });
+      job.views = (job.views ?? 0) + 1;
 
-    await trackSafely({
-      eventType: 'job_view',
-      actorRole: 'anonymous',
-      entityType: 'job',
-      entityId: job._id,
-      jobId: job._id,
-      companyId: job.companyId,
-      employerId: job.employerId,
-      categoryId: job.categoryId,
-      locationId: job.location?.locationId,
-      metadata: { source: 'public_job_detail' },
-    });
+      await trackSafely({
+        eventType: 'job_view',
+        actorRole: 'anonymous',
+        entityType: 'job',
+        entityId: job._id,
+        jobId: job._id,
+        companyId: job.companyId,
+        employerId: job.employerId,
+        categoryId: job.categoryId,
+        locationId: job.location?.locationId,
+        metadata: { source: 'public_job_detail' },
+      });
+    }
 
     const category = job.categoryId
       ? await Category.findById(job.categoryId).select('name slug')
