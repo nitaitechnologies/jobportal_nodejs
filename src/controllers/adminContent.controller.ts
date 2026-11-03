@@ -24,6 +24,12 @@ import type {
 } from '../validators/recruiterTestimonial.validator';
 import { recruiterTestimonialService } from '../services/recruiterTestimonial.service';
 import type {
+  JobSeekerTestimonialCreateInput,
+  JobSeekerTestimonialQuery,
+  JobSeekerTestimonialUpdateInput,
+} from '../validators/jobSeekerTestimonial.validator';
+import { jobSeekerTestimonialService } from '../services/jobSeekerTestimonial.service';
+import type {
   AdminNotificationQuery,
   AdminNotificationSendInput,
   NotificationTemplateCreateInput,
@@ -213,6 +219,61 @@ export class AdminContentController {
         res,
         await recruiterTestimonialService.remove(idParam(req)),
         'Recruiter testimonial deleted',
+      );
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  // Job seeker testimonials
+  async listJobSeekerTestimonials(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await jobSeekerTestimonialService.list(
+        (req as ReqQ<JobSeekerTestimonialQuery>).validatedQuery!,
+      );
+      sendSuccess(res, data, 'Job seeker testimonials fetched successfully');
+    } catch (e) {
+      next(e);
+    }
+  }
+  async getJobSeekerTestimonial(req: Request, res: Response, next: NextFunction) {
+    try {
+      sendSuccess(
+        res,
+        await jobSeekerTestimonialService.getById(idParam(req)),
+        'Job seeker testimonial fetched',
+      );
+    } catch (e) {
+      next(e);
+    }
+  }
+  async createJobSeekerTestimonial(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await jobSeekerTestimonialService.create(
+        req.body as JobSeekerTestimonialCreateInput,
+      );
+      sendSuccess(res, data, 'Job seeker testimonial created', HTTP_STATUS.CREATED);
+    } catch (e) {
+      next(e);
+    }
+  }
+  async updateJobSeekerTestimonial(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await jobSeekerTestimonialService.update(
+        idParam(req),
+        req.body as JobSeekerTestimonialUpdateInput,
+      );
+      sendSuccess(res, data, 'Job seeker testimonial updated');
+    } catch (e) {
+      next(e);
+    }
+  }
+  async deleteJobSeekerTestimonial(req: Request, res: Response, next: NextFunction) {
+    try {
+      sendSuccess(
+        res,
+        await jobSeekerTestimonialService.remove(idParam(req)),
+        'Job seeker testimonial deleted',
       );
     } catch (e) {
       next(e);

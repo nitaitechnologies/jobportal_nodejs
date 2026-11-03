@@ -25,6 +25,8 @@ export const applicationApplySchema = z
     resume: z.string().trim().max(500).optional(),
     /** Optional own video resume media:id; defaults to candidate profile video resume when feature enabled. */
     videoResume: z.string().trim().max(500).optional(),
+    /** Optional voice intro media:id; omit → profile voice; empty string → no voice. */
+    voiceIntro: z.string().trim().max(500).optional(),
   })
   .strict();
 

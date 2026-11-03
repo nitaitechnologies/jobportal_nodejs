@@ -64,8 +64,12 @@ const userSchema = new Schema(
 );
 
 userSchema.index({ email: 1 }, { unique: true });
+/**
+ * Same mobile may own both a candidate and an employer account.
+ * Uniqueness is scoped to (phone, role) — not phone alone.
+ */
 userSchema.index(
-  { phone: 1 },
+  { phone: 1, role: 1 },
   {
     unique: true,
     partialFilterExpression: { phone: { $type: 'string', $gt: '' } },

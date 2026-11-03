@@ -241,7 +241,7 @@ export const HIRING_PLAN_DEFS: HiringPlanSeedDef[] = [
     upfront: 2499,
     monthlyPrice: 2499,
     upgradePrice: null,
-    available: false,
+    available: true,
     activeJobs: 1,
     unlocks: 100,
     boosts: 3,

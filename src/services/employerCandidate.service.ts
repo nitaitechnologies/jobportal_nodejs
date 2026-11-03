@@ -316,6 +316,8 @@ function toCard(input: {
     updatedAt: candidate.updatedAt ? new Date(candidate.updatedAt).toISOString() : null,
     hasResume: hasStoredResume(resumeValue),
     hasVideoResume: hasStoredVideoResume(videoResumeValue),
+    hasVoiceIntro: Boolean(((candidate as { voiceIntro?: string }).voiceIntro ?? '').trim()),
+    voiceIntroUrl: ((candidate as { voiceIntro?: string }).voiceIntro ?? '').trim() || null,
     isSaved: Boolean(saved),
     tags: saved?.tags ?? [],
     contactUnlocked,

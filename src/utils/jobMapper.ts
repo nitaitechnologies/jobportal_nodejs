@@ -237,6 +237,8 @@ export function mapPublicJob(
     salary: core.salary,
     openings: core.openings,
     education: core.education,
+    // Candidates must see/answer these on apply; omit auto-filter (employer-only).
+    screeningQuestions: core.screeningQuestions,
     shift: core.shift,
     workingDays: core.workingDays,
     workingHours: core.workingHours,

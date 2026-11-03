@@ -87,6 +87,8 @@ const candidateSchema = new Schema(
     resume: { type: String, trim: true, default: '' },
     /** Private media: ref for profile video resume (max 2MB / 40s when enabled). */
     videoResume: { type: String, trim: true, default: '' },
+    /** Private media: ref for English voice intro (max 5MB). */
+    voiceIntro: { type: String, trim: true, default: '' },
     portfolio: { type: String, trim: true, default: '' },
     socialLinks: { type: socialLinksSchema, default: () => ({}) },
     /** Trust badge lifecycle (sheet 147–148). */

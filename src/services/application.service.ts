@@ -296,6 +296,40 @@ async function resolveApplyVideoResume(
   throw new AppError('Invalid video resume reference', HTTP_STATUS.BAD_REQUEST);
 }
 
+
+async function resolveApplyVoiceIntro(
+  candidateUserId: string,
+  candidateVoiceIntro: string | null | undefined,
+  inputVoiceIntro?: string,
+): Promise<string> {
+  const fallback = candidateVoiceIntro?.trim() ?? '';
+  // Field omitted → use profile voice. Explicit empty → no voice on this application.
+  if (inputVoiceIntro === undefined) return fallback;
+  const requested = inputVoiceIntro.trim();
+  if (!requested) return '';
+
+  if (requested.startsWith('media:')) {
+    const mediaId = requested.slice('media:'.length);
+    if (!mongoose.Types.ObjectId.isValid(mediaId)) {
+      throw new AppError('Invalid voice intro reference', HTTP_STATUS.BAD_REQUEST);
+    }
+    const media = await MediaFile.findById(mediaId).select(
+      'ownerUserId category visibility status',
+    );
+    if (
+      !media ||
+      media.status !== 'active' ||
+      media.ownerUserId.toString() !== candidateUserId ||
+      media.category !== 'candidate_voice_intro'
+    ) {
+      throw new AppError('Voice intro reference is not allowed', HTTP_STATUS.FORBIDDEN);
+    }
+    return `media:${mediaId}`;
+  }
+
+  throw new AppError('Invalid voice intro reference', HTTP_STATUS.BAD_REQUEST);
+}
+
 function matchFor(
   job: {
     title: string;
@@ -366,6 +400,8 @@ async function loadEmployerCandidateView(candidateId: mongoose.Types.ObjectId) {
     resume: redactResumeForEmployer(candidate.resume),
     hasResume: Boolean(candidate.resume?.trim()),
     hasVideoResume: env.enableVideoResume && Boolean((candidate.videoResume ?? '').trim()),
+    hasVoiceIntro: Boolean(((candidate as { voiceIntro?: string }).voiceIntro ?? '').trim()),
+    voiceIntroUrl: ((candidate as { voiceIntro?: string }).voiceIntro ?? '').trim() || null,
     portfolio: candidate.portfolio ?? '',
     expectedSalary: candidate.expectedSalary ?? null,
     noticePeriod: candidate.noticePeriod ?? 0,
@@ -427,6 +463,11 @@ export class ApplicationService {
       candidate.userId,
       candidateDoc.videoResume,
       input.videoResume,
+    );
+    const voiceIntro = await resolveApplyVoiceIntro(
+      candidate.userId,
+      (candidateDoc as { voiceIntro?: string }).voiceIntro,
+      input.voiceIntro,
     );
 
     // Re-apply after withdraw: unique {candidateId,jobId} means we reactivate the row.
@@ -527,6 +568,7 @@ export class ApplicationService {
 
       existing.resume = resume;
       existing.videoResume = videoResume;
+      (existing as { voiceIntro?: string }).voiceIntro = voiceIntro;
       existing.coverLetter = input.coverLetter ?? '';
       existing.answers = normalizedAnswers as typeof existing.answers;
       existing.status = autoReject ? 'rejected' : 'applied';
@@ -558,6 +600,7 @@ export class ApplicationService {
         companyId: job.companyId,
         resume,
         videoResume,
+        voiceIntro,
         coverLetter: input.coverLetter ?? '',
         answers: normalizedAnswers,
         status: autoReject ? 'rejected' : 'applied',

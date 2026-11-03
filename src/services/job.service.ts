@@ -516,12 +516,8 @@ function assertPublishReady(job: JobDocument): void {
   if (!job.location?.locationId && job.workMode !== 'remote') {
     errors.push({ path: 'locationId', message: 'Location is required to publish' });
   }
-  if (job.workMode !== 'remote' && typeof job.location?.latitude !== 'number') {
-    errors.push({
-      path: 'officePlaceId',
-      message: 'Office address is required to publish an on-site or hybrid job',
-    });
-  }
+  // Office map pin is preferred but not required — city/area locationId is enough
+  // for first-time / quick hire posts to go live (Activated).
   if (!job.workMode) {
     errors.push({ path: 'workMode', message: 'Work mode is required' });
   }
@@ -1142,11 +1138,47 @@ export class JobService {
     await assertCompanyCanPost(employer.companyId);
     const job = await findOwnedJob(id, employer);
 
-    if (!PUBLISH_READY_STATUSES.includes(job.status)) {
+    // Allow activating paused (Not active) jobs as well as draft/pending.
+    if (
+      !PUBLISH_READY_STATUSES.includes(job.status) &&
+      job.status !== 'paused'
+    ) {
       throw new AppError(
         `Cannot publish a job with status "${job.status}"`,
         HTTP_STATUS.CONFLICT,
       );
+    }
+
+    // Fill common gaps from quick / first-time posts before validation.
+    if (job.experienceMin === undefined || job.experienceMin === null) {
+      job.experienceMin = 0;
+    }
+    if (!job.applicationDeadline) {
+      job.applicationDeadline = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    }
+    if (!job.categoryId) {
+      const fallbackCategory = await Category.findOne({ status: 'active' })
+        .sort({ sortOrder: 1, name: 1 })
+        .select('_id');
+      if (fallbackCategory) {
+        job.categoryId = fallbackCategory._id as mongoose.Types.ObjectId;
+      }
+    }
+    if (
+      job.location?.locationId &&
+      typeof job.location.latitude !== 'number'
+    ) {
+      try {
+        const snap = await buildLocationSnapshot(job.location.locationId.toString());
+        job.location.latitude = snap.latitude;
+        job.location.longitude = snap.longitude;
+        if (!job.location.displayName && snap.displayName) {
+          job.location.displayName = snap.displayName;
+        }
+        if (!job.location.city && snap.city) job.location.city = snap.city;
+      } catch {
+        /* city taxonomy may lack coordinates */
+      }
     }
 
     assertPublishReady(job);
@@ -1314,8 +1346,17 @@ export class JobService {
 
   async pause(employer: AuthenticatedEmployer, id: string) {
     const job = await findOwnedJob(id, employer);
-    if (job.status !== 'published') {
-      throw new AppError('Only published jobs can be paused', HTTP_STATUS.CONFLICT);
+    // Published → Not active (temporarily off).
+    // Draft/pending → Not active for quick-post / first-time hire (complete but not live yet).
+    if (
+      job.status !== 'published' &&
+      job.status !== 'draft' &&
+      job.status !== 'pending'
+    ) {
+      throw new AppError(
+        'Only published, draft, or pending jobs can be moved to Not active',
+        HTTP_STATUS.CONFLICT,
+      );
     }
     job.status = 'paused';
     await job.save();

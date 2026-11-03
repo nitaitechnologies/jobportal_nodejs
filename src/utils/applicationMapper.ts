@@ -9,6 +9,7 @@ export interface ApplicationLike {
   companyId: Types.ObjectId | { toString(): string };
   resume?: string | null;
   videoResume?: string | null;
+  voiceIntro?: string | null;
   coverLetter?: string | null;
   answers?: Array<{ question: string; answer?: string }>;
   status?: string;
@@ -49,6 +50,7 @@ export function mapCandidateApplication(
   },
 ) {
   const videoRaw = application.videoResume ?? '';
+  const voiceRaw = application.voiceIntro ?? '';
   return {
     id: application._id.toString(),
     jobId: application.jobId.toString(),
@@ -56,6 +58,7 @@ export function mapCandidateApplication(
     coverLetter: application.coverLetter ?? '',
     resume: application.resume ?? '',
     hasVideoResume: env.enableVideoResume && Boolean(videoRaw.trim()),
+    hasVoiceIntro: Boolean(voiceRaw.trim()),
     answers: application.answers ?? [],
     appliedAt: application.appliedAt ?? application.createdAt ?? null,
     viewedAt: application.viewedAt ?? null,
@@ -84,6 +87,7 @@ export function mapEmployerApplication(
       ? '[resume on file]'
       : resumeRaw;
   const videoRaw = application.videoResume ?? '';
+  const voiceRaw = application.voiceIntro ?? '';
 
   return {
     id: application._id.toString(),
@@ -94,6 +98,7 @@ export function mapEmployerApplication(
     resume,
     hasResume: Boolean(resumeRaw.trim()),
     hasVideoResume: env.enableVideoResume && Boolean(videoRaw.trim()),
+    hasVoiceIntro: Boolean(voiceRaw.trim()),
     answers: application.answers ?? [],
     appliedAt: application.appliedAt ?? application.createdAt ?? null,
     viewedAt: application.viewedAt ?? null,

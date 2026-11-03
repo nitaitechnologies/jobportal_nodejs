@@ -78,6 +78,14 @@ employerApplicationRouter.get(
   },
 );
 
+employerApplicationRouter.get(
+  '/:id/voice-intro/download',
+  validateApplicationIdParam,
+  (req, res, next) => {
+    void mediaController.downloadApplicationVoiceIntroEmployer(req, res, next);
+  },
+);
+
 employerApplicationRouter.patch(
   '/:id/status',
   validateApplicationIdParam,

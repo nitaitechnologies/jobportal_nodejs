@@ -59,6 +59,8 @@ const applicationSchema = new Schema(
     resume: { type: String, trim: true, default: '' },
     /** Snapshot of profile video resume or per-application override. */
     videoResume: { type: String, trim: true, default: '' },
+    /** Snapshot of profile voice intro or per-application override. */
+    voiceIntro: { type: String, trim: true, default: '' },
     coverLetter: { type: String, trim: true, default: '', maxlength: 10000 },
     answers: { type: [applicationAnswerSchema], default: [] },
     status: {

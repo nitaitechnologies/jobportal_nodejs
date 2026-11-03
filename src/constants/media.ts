@@ -2,6 +2,7 @@ export const MEDIA_CATEGORIES = [
   'candidate_avatar',
   'candidate_resume',
   'candidate_video_resume',
+  'candidate_voice_intro',
   'job_video_jd',
   'company_logo',
   'company_cover',
@@ -22,6 +23,7 @@ export const MEDIA_CATEGORY_VISIBILITY: Record<MediaCategory, MediaVisibility> =
   candidate_avatar: 'public',
   candidate_resume: 'private',
   candidate_video_resume: 'private',
+  candidate_voice_intro: 'private',
   job_video_jd: 'public',
   company_logo: 'public',
   company_cover: 'public',
@@ -36,6 +38,7 @@ export const MEDIA_MAX_BYTES: Record<MediaCategory, number> = {
   candidate_avatar: 2 * 1024 * 1024, // 2 MB
   candidate_resume: 5 * 1024 * 1024, // 5 MB
   candidate_video_resume: 2 * 1024 * 1024, // 2 MB (default; use getMediaMaxBytes)
+  candidate_voice_intro: 5 * 1024 * 1024, // 5 MB
   job_video_jd: 2 * 1024 * 1024, // 2 MB (default; use getMediaMaxBytes)
   company_logo: 2 * 1024 * 1024, // 2 MB
   company_cover: 5 * 1024 * 1024, // 5 MB
@@ -49,14 +52,21 @@ export function isVideoMediaCategory(category: MediaCategory): boolean {
   return category === 'candidate_video_resume' || category === 'job_video_jd';
 }
 
+export function isAudioMediaCategory(category: MediaCategory): boolean {
+  return category === 'candidate_voice_intro';
+}
+
 export const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export const RESUME_MIME_TYPES = ['application/pdf'] as const;
 export const VIDEO_MIME_TYPES = ['video/mp4', 'video/webm'] as const;
+/** Browser MediaRecorder audio/webm still has EBML magic → treated as audio/webm for this category. */
+export const AUDIO_MIME_TYPES = ['audio/webm', 'audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/ogg'] as const;
 
 export const MEDIA_ALLOWED_MIME: Record<MediaCategory, readonly string[]> = {
   candidate_avatar: IMAGE_MIME_TYPES,
   candidate_resume: RESUME_MIME_TYPES,
   candidate_video_resume: VIDEO_MIME_TYPES,
+  candidate_voice_intro: AUDIO_MIME_TYPES,
   job_video_jd: VIDEO_MIME_TYPES,
   company_logo: IMAGE_MIME_TYPES,
   company_cover: IMAGE_MIME_TYPES,
@@ -71,6 +81,7 @@ export const MEDIA_ALLOWED_EXTENSIONS: Record<MediaCategory, readonly string[]> 
   candidate_resume: ['.pdf'],
   // .mov/.m4v: iOS camera often writes MPEG-4 with those names; magic still detects video/mp4.
   candidate_video_resume: ['.mp4', '.webm', '.mov', '.m4v'],
+  candidate_voice_intro: ['.webm', '.mp3', '.wav', '.m4a', '.ogg', '.mp4'],
   job_video_jd: ['.mp4', '.webm', '.mov', '.m4v'],
   company_logo: ['.jpg', '.jpeg', '.png', '.webp'],
   company_cover: ['.jpg', '.jpeg', '.png', '.webp'],

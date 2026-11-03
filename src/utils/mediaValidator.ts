@@ -7,6 +7,7 @@ import {
   MEDIA_ALLOWED_MIME,
   MEDIA_CATEGORIES,
   MEDIA_MAX_BYTES,
+  isAudioMediaCategory,
   isVideoMediaCategory,
   type MediaCategory,
 } from '../constants/media';
@@ -61,8 +62,33 @@ function detectMimeFromMagic(buffer: Buffer): string | null {
     return 'video/webm';
   }
 
+  // WAV: RIFF....WAVE
+  if (
+    buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    buffer.subarray(8, 12).toString('ascii') === 'WAVE'
+  ) {
+    return 'audio/wav';
+  }
+
+  // OGG
+  if (buffer.subarray(0, 4).toString('ascii') === 'OggS') {
+    return 'audio/ogg';
+  }
+
+  // MP3: ID3 tag or MPEG frame sync
+  if (
+    buffer.subarray(0, 3).toString('ascii') === 'ID3' ||
+    (buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0)
+  ) {
+    return 'audio/mpeg';
+  }
+
   // MP4 / ISO BMFF: ....ftyp
   if (buffer.subarray(4, 8).toString('ascii') === 'ftyp') {
+    const brand = buffer.subarray(8, 12).toString('ascii');
+    if (brand === 'M4A ' || brand === 'mp4a' || brand === 'M4B ') {
+      return 'audio/mp4';
+    }
     return 'video/mp4';
   }
 
@@ -162,7 +188,7 @@ export function validateUploadedFile(input: {
     ]);
   }
 
-  const detected = detectMimeFromMagic(input.buffer);
+  let detected = detectMimeFromMagic(input.buffer);
   const declared = (input.declaredMime || '').toLowerCase().split(';')[0].trim();
   const allowed = MEDIA_ALLOWED_MIME[category];
 
@@ -170,6 +196,19 @@ export function validateUploadedFile(input: {
     throw new AppError('Unable to verify file type', HTTP_STATUS.BAD_REQUEST, [
       { path: 'file', message: 'Unrecognized or unsupported file signature' },
     ]);
+  }
+
+  // Audio-only WebM from MediaRecorder shares EBML magic with video/webm.
+  if (isAudioMediaCategory(category) && detected === 'video/webm') {
+    detected = 'audio/webm';
+  }
+  // M4A often detected as video/mp4 when brand is not M4A-specific.
+  if (
+    isAudioMediaCategory(category) &&
+    detected === 'video/mp4' &&
+    (extension === '.m4a' || declared.startsWith('audio/'))
+  ) {
+    detected = 'audio/mp4';
   }
 
   if (!(allowed as readonly string[]).includes(detected)) {
@@ -187,7 +226,14 @@ export function validateUploadedFile(input: {
     const mp4Family =
       detected === 'video/mp4' &&
       (declared === 'video/quicktime' || declared === 'application/mp4');
-    if (!jpegFamily && !mp4Family) {
+    // Allow audio/webm declared while container magic looks like video/webm (already remapped)
+    const audioWebmFamily =
+      detected === 'audio/webm' &&
+      (declared === 'audio/webm' || declared === 'video/webm' || declared === 'audio/webm;codecs=opus');
+    const audioMp4Family =
+      detected === 'audio/mp4' &&
+      (declared === 'audio/mp4' || declared === 'audio/m4a' || declared === 'audio/x-m4a');
+    if (!jpegFamily && !mp4Family && !audioWebmFamily && !audioMp4Family) {
       throw new AppError('MIME type mismatch', HTTP_STATUS.BAD_REQUEST, [
         {
           path: 'file',
@@ -205,6 +251,11 @@ export function validateUploadedFile(input: {
     'application/pdf': ['.pdf'],
     'video/mp4': ['.mp4', '.mov', '.m4v'],
     'video/webm': ['.webm'],
+    'audio/webm': ['.webm'],
+    'audio/mpeg': ['.mp3'],
+    'audio/wav': ['.wav'],
+    'audio/mp4': ['.m4a', '.mp4'],
+    'audio/ogg': ['.ogg'],
   };
   if (!(extForMime[detected] ?? []).includes(extension)) {
     throw new AppError('Extension does not match file contents', HTTP_STATUS.BAD_REQUEST);

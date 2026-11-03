@@ -179,6 +179,74 @@ export class MediaController {
     }
   }
 
+  async uploadCandidateVoiceIntro(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await mediaUploadService.uploadCandidateVoiceIntro(
+        requireCandidate(req),
+        requireUploadedFile(req),
+      );
+      sendSuccess(res, data, 'Voice intro uploaded successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getCandidateVoiceIntro(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await mediaUploadService.getCandidateVoiceIntro(requireCandidate(req));
+      sendSuccess(res, data, 'Voice intro fetched successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async downloadCandidateVoiceIntro(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { media, buffer } = await mediaUploadService.downloadCandidateVoiceIntro(
+        requireCandidate(req),
+      );
+      res.setHeader('Content-Type', media.mimeType);
+      const safeName = media.originalName
+        .replace(/[^\w.\- ()[\]]+/g, '_')
+        .replace(/"/g, '')
+        .slice(0, 180);
+      res.setHeader(
+        'Content-Disposition',
+        `inline; filename="${safeName || 'voice-intro'}"`,
+      );
+      res.setHeader('Content-Length', String(buffer.length));
+      res.status(HTTP_STATUS.OK).send(buffer);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteCandidateVoiceIntro(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await mediaUploadService.deleteCandidateVoiceIntro(requireCandidate(req));
+      sendSuccess(res, data, 'Voice intro deleted successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async downloadApplicationVoiceIntroEmployer(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { media, buffer } =
+        await mediaUploadService.downloadApplicationVoiceIntroForEmployer(
+          requireEmployer(req),
+          idParam(req),
+        );
+      res.setHeader('Content-Type', media.mimeType);
+      res.setHeader('Content-Disposition', 'inline; filename="voice-intro"');
+      res.setHeader('Content-Length', String(buffer.length));
+      res.status(HTTP_STATUS.OK).send(buffer);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+
   async uploadJobVideoJd(req: Request, res: Response, next: NextFunction) {
     try {
       const data = await mediaUploadService.uploadJobVideoJd(

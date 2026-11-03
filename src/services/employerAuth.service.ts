@@ -142,9 +142,16 @@ export class EmployerAuthService {
       throw new AppError('An account with this email already exists', HTTP_STATUS.CONFLICT);
     }
 
-    const existingByPhone = await User.findOne({ phone: input.phone }).select('_id');
+    // Same phone may already be a candidate — only block a second employer.
+    const existingByPhone = await User.findOne({
+      phone: input.phone,
+      role: 'employer',
+    }).select('_id');
     if (existingByPhone) {
-      throw new AppError('An account with this phone already exists', HTTP_STATUS.CONFLICT);
+      throw new AppError(
+        'An employer account with this phone already exists',
+        HTTP_STATUS.CONFLICT,
+      );
     }
 
     const passwordless = !input.password?.trim();
@@ -299,14 +306,15 @@ export class EmployerAuthService {
     dummy: boolean;
     channel: 'sms' | 'email' | 'none';
     isNewUser: boolean;
-    /** Present when the phone already belongs to a user — client should OTP-login that role. */
+    /** Employer account for this phone, if any. Candidate-only numbers still get employer OTP. */
     accountRole?: 'employer' | 'candidate' | null;
   }> {
-    const existingUser = await User.findOne({ phone: input.phone }).select(
-      '_id role status deletedAt',
-    );
+    const existingEmployer = await User.findOne({
+      phone: input.phone,
+      role: 'employer',
+    }).select('_id status deletedAt');
 
-    if (existingUser && !existingUser.deletedAt && existingUser.role === 'employer') {
+    if (existingEmployer && !existingEmployer.deletedAt) {
       // Validates employer + company are active; throws 403 if blocked.
       await this.lookupPhoneForEmployerOtp(input.phone);
       const result = otpService.send(`employer:login:${input.phone}`, {
@@ -324,24 +332,7 @@ export class EmployerAuthService {
       };
     }
 
-    if (existingUser && !existingUser.deletedAt && existingUser.role === 'candidate') {
-      // Phone already has a job-seeker account — send candidate OTP so login can continue.
-      const result = otpService.send(input.phone, {
-        destination: input.phone,
-        channel: 'sms',
-        purpose: 'candidate_login',
-      });
-      return {
-        phone: input.phone,
-        expiresIn: result.expiresIn,
-        dummy: result.dummy,
-        channel: result.channel,
-        isNewUser: false,
-        accountRole: 'candidate',
-      };
-    }
-
-    // Brand-new number → client routes to employer register (OTP verified there).
+    // No employer yet (phone may still be a candidate) → hiring register after OTP.
     const result = otpService.send(`employer:login:${input.phone}`, {
       destination: input.phone,
       channel: 'sms',
@@ -403,15 +394,8 @@ export class EmployerAuthService {
   }
 
   private async lookupPhoneForEmployerOtp(phone: string) {
-    const user = await User.findOne({ phone });
+    const user = await User.findOne({ phone, role: 'employer' });
     if (!user || user.deletedAt) return null;
-
-    if (user.role !== 'employer') {
-      throw new AppError(
-        'This mobile number is already registered. Use a different number.',
-        HTTP_STATUS.CONFLICT,
-      );
-    }
 
     if (user.status !== 'active') {
       throw new AppError('Employer access denied', HTTP_STATUS.FORBIDDEN);

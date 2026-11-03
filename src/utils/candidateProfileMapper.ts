@@ -78,6 +78,13 @@ export function mapSafeCandidateProfile(candidate: CandidateDoc) {
           ((candidate as CandidateDoc & { videoResume?: string }).videoResume ?? '').trim(),
         )
       : false,
+    voiceIntroUrl: (() => {
+      const voice = ((candidate as CandidateDoc & { voiceIntro?: string }).voiceIntro ?? '').trim();
+      return voice || null;
+    })(),
+    hasVoiceIntro: Boolean(
+      ((candidate as CandidateDoc & { voiceIntro?: string }).voiceIntro ?? '').trim(),
+    ),
     portfolio: candidate.portfolio ?? '',
     socialLinks: candidate.socialLinks ?? {},
     verificationStatus,

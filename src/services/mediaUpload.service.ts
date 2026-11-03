@@ -417,6 +417,120 @@ export class MediaUploadService {
     };
   }
 
+
+  async uploadCandidateVoiceIntro(
+    candidate: AuthenticatedCandidate,
+    file: Express.Multer.File,
+  ) {
+    const { candidate: candidateDoc } = await loadCandidatePair(candidate.userId);
+    const previous = (candidateDoc as { voiceIntro?: string }).voiceIntro ?? '';
+
+    const uploaded = await uploadMedia({
+      category: 'candidate_voice_intro',
+      ownerUserId: candidate.userId,
+      ownerType: 'candidate',
+      entityType: 'candidate',
+      entityId: candidate.candidateId,
+      originalName: file.originalname,
+      declaredMime: file.mimetype,
+      buffer: file.buffer,
+      size: file.size,
+      previousRef: previous,
+    });
+
+    (candidateDoc as { voiceIntro?: string }).voiceIntro = uploaded.domainRef;
+    await candidateDoc.save();
+
+    return {
+      voiceIntroUrl: uploaded.domainRef,
+      media: uploaded.media,
+      downloadUrl: `${env.apiPrefix}/candidate/profile/voice-intro/download`,
+    };
+  }
+
+  async getCandidateVoiceIntro(candidate: AuthenticatedCandidate) {
+    const { candidate: candidateDoc } = await loadCandidatePair(candidate.userId);
+    const voiceIntro = (candidateDoc as { voiceIntro?: string }).voiceIntro ?? '';
+    const mediaId = parseMediaRef(voiceIntro);
+    let media = null;
+    if (mediaId) {
+      try {
+        const doc = await getActiveMediaById(mediaId);
+        media = mapSafeMedia(doc);
+      } catch {
+        media = null;
+      }
+    }
+    const stored = hasStoredMedia(voiceIntro);
+    return {
+      voiceIntroUrl: stored ? voiceIntro : null,
+      hasVoiceIntro: stored,
+      media,
+      downloadUrl: stored
+        ? `${env.apiPrefix}/candidate/profile/voice-intro/download`
+        : null,
+    };
+  }
+
+  async downloadCandidateVoiceIntro(candidate: AuthenticatedCandidate) {
+    const { candidate: candidateDoc } = await loadCandidatePair(candidate.userId);
+    const mediaId = parseMediaRef((candidateDoc as { voiceIntro?: string }).voiceIntro);
+    if (!mediaId) {
+      throw new AppError('Voice intro not found', HTTP_STATUS.NOT_FOUND);
+    }
+    const { media, buffer } = await readMediaBuffer(mediaId);
+    if (media.ownerUserId.toString() !== candidate.userId) {
+      throw new AppError('Voice intro access denied', HTTP_STATUS.FORBIDDEN);
+    }
+    if (media.category !== 'candidate_voice_intro') {
+      throw new AppError('Voice intro access denied', HTTP_STATUS.FORBIDDEN);
+    }
+    return { media, buffer };
+  }
+
+  async deleteCandidateVoiceIntro(candidate: AuthenticatedCandidate) {
+    const { candidate: candidateDoc } = await loadCandidatePair(candidate.userId);
+    const previous = (candidateDoc as { voiceIntro?: string }).voiceIntro ?? '';
+    (candidateDoc as { voiceIntro?: string }).voiceIntro = '';
+    await candidateDoc.save();
+    await deleteMediaByRef(previous, { ownerUserId: candidate.userId });
+    return {
+      deleted: true,
+      voiceIntroUrl: null,
+      hasVoiceIntro: false,
+    };
+  }
+
+  async downloadApplicationVoiceIntroForEmployer(
+    employer: AuthenticatedEmployer,
+    applicationId: string,
+  ) {
+    const application = await Application.findOne({
+      _id: applicationId,
+      employerId: employer.employerId,
+    });
+    if (!application) throw new AppError('Application not found', HTTP_STATUS.NOT_FOUND);
+
+    const voiceRaw =
+      (application as { voiceIntro?: string }).voiceIntro?.trim() ||
+      '';
+    let mediaId = parseMediaRef(voiceRaw);
+
+    // Fallback to candidate profile voice when application snapshot is empty.
+    if (!mediaId) {
+      const candidate = await Candidate.findById(application.candidateId).select('voiceIntro');
+      mediaId = parseMediaRef((candidate as { voiceIntro?: string } | null)?.voiceIntro);
+    }
+
+    if (!mediaId) throw new AppError('Voice intro not found', HTTP_STATUS.NOT_FOUND);
+
+    const { media, buffer } = await readMediaBuffer(mediaId);
+    if (media.category !== 'candidate_voice_intro') {
+      throw new AppError('Voice intro access denied', HTTP_STATUS.FORBIDDEN);
+    }
+    return { media, buffer };
+  }
+
   async uploadJobVideoJd(
     employer: AuthenticatedEmployer,
     jobId: string,

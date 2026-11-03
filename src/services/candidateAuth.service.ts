@@ -90,9 +90,16 @@ export class CandidateAuthService {
       throw new AppError('An account with this email already exists', HTTP_STATUS.CONFLICT);
     }
 
-    const existingByPhone = await User.findOne({ phone: input.phone }).select('_id');
+    // Same phone may already be an employer — only block a second candidate.
+    const existingByPhone = await User.findOne({
+      phone: input.phone,
+      role: 'candidate',
+    }).select('_id');
     if (existingByPhone) {
-      throw new AppError('An account with this phone already exists', HTTP_STATUS.CONFLICT);
+      throw new AppError(
+        'A job seeker account with this phone already exists',
+        HTTP_STATUS.CONFLICT,
+      );
     }
 
     const passwordHash = await hashPassword(input.password);

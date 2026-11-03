@@ -27,6 +27,12 @@ import {
   recruiterTestimonialUpdateSchema,
 } from '../validators/recruiterTestimonial.validator';
 import {
+  jobSeekerTestimonialCreateSchema,
+  jobSeekerTestimonialIdParamSchema,
+  jobSeekerTestimonialQuerySchema,
+  jobSeekerTestimonialUpdateSchema,
+} from '../validators/jobSeekerTestimonial.validator';
+import {
   adminNotificationQuerySchema,
   adminNotificationSendSchema,
   notificationTemplateCreateSchema,
@@ -114,6 +120,19 @@ export const validateRecruiterTestimonialUpdate = makeBodyValidator(
 );
 export const validateRecruiterTestimonialIdParam = makeParamValidator(
   recruiterTestimonialIdParamSchema,
+);
+
+export const validateJobSeekerTestimonialQuery = makeQueryValidator(
+  jobSeekerTestimonialQuerySchema,
+);
+export const validateJobSeekerTestimonialCreate = makeBodyValidator(
+  jobSeekerTestimonialCreateSchema,
+);
+export const validateJobSeekerTestimonialUpdate = makeBodyValidator(
+  jobSeekerTestimonialUpdateSchema,
+);
+export const validateJobSeekerTestimonialIdParam = makeParamValidator(
+  jobSeekerTestimonialIdParamSchema,
 );
 
 export const validateAdminNotificationQuery = makeQueryValidator(adminNotificationQuerySchema);

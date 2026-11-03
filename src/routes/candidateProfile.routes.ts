@@ -128,6 +128,22 @@ candidateProfileRouter.delete('/video-resume', requireVideoResumeEnabled, (req, 
   void mediaController.deleteCandidateVideoResume(req, res, next);
 });
 
+candidateProfileRouter.post('/voice-intro', uploadSingle('file'), (req, res, next) => {
+  void mediaController.uploadCandidateVoiceIntro(req, res, next);
+});
+
+candidateProfileRouter.get('/voice-intro', (req, res, next) => {
+  void mediaController.getCandidateVoiceIntro(req, res, next);
+});
+
+candidateProfileRouter.get('/voice-intro/download', (req, res, next) => {
+  void mediaController.downloadCandidateVoiceIntro(req, res, next);
+});
+
+candidateProfileRouter.delete('/voice-intro', (req, res, next) => {
+  void mediaController.deleteCandidateVoiceIntro(req, res, next);
+});
+
 candidateProfileRouter.post('/skills', validateSkillCreate, (req, res, next) => {
   void candidateProfileController.addSkill(req, res, next);
 });
