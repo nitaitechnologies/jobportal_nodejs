@@ -13,6 +13,8 @@ export interface SeedLocationNode {
   stateName?: string;
   countryName?: string;
   displayName?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface SeedCategoryNode {

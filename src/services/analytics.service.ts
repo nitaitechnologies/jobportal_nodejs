@@ -198,7 +198,7 @@ export async function trackAnalyticsEvent(input: TrackAnalyticsEventInput) {
 
 export async function trackSafely(input: TrackAnalyticsEventInput): Promise<void> {
   try {
-    const { settingsService } = await import('./settings.service.js');
+    const { settingsService } = await import('./settings.service');
     const enabled = await settingsService.getBoolean('analytics.enabled', true);
     if (!enabled) {
       return;

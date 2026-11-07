@@ -120,6 +120,10 @@ const jobSchema = new Schema(
       enum: [...GENDERS, 'any'],
       default: 'any',
     },
+    /** HR / recruiter phone shown on public job cards. */
+    contactPhone: { type: String, trim: true, default: '' },
+    /** WhatsApp number for HR (falls back to contactPhone when empty). */
+    contactWhatsapp: { type: String, trim: true, default: '' },
     benefits: {
       type: [{ type: String, trim: true }],
       default: [],

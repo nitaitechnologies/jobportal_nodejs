@@ -111,6 +111,8 @@ export const jobCreateSchema = z
       .enum(['male', 'female', 'other', 'prefer_not_to_say', 'any'])
       .optional()
       .default('any'),
+    contactPhone: z.string().trim().max(20).optional().default(''),
+    contactWhatsapp: z.string().trim().max(20).optional().default(''),
     benefits: stringListSchema.optional().default([]),
     incentives: z.boolean().optional().default(false),
     interviewProcess: z.string().trim().max(2000).optional().default(''),
@@ -144,6 +146,8 @@ export const jobUpdateSchema = z
     genderPreference: z
       .enum(['male', 'female', 'other', 'prefer_not_to_say', 'any'])
       .optional(),
+    contactPhone: z.string().trim().max(20).nullable().optional(),
+    contactWhatsapp: z.string().trim().max(20).nullable().optional(),
     benefits: stringListSchema.optional(),
     incentives: z.boolean().optional(),
     interviewProcess: z.string().trim().max(2000).nullable().optional(),
@@ -220,6 +224,7 @@ export const publicJobQuerySchema = z
       ])
       .optional(),
     education: csvOrArraySchema,
+    genderPreference: z.string().trim().min(1).max(80).optional(),
     skills: csvOrArraySchema,
     industry: z.string().trim().min(1).max(140).optional(),
     companyId: objectIdSchema.optional(),

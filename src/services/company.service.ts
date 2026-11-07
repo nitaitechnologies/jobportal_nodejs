@@ -139,6 +139,9 @@ export class CompanyService {
     if (input.contactPhone !== undefined) {
       company.contactPhone = input.contactPhone;
     }
+    if (input.contactWhatsapp !== undefined) {
+      company.contactWhatsapp = input.contactWhatsapp;
+    }
     if (input.logo !== undefined) {
       company.logo = input.logo;
     }

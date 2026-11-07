@@ -17,3 +17,31 @@ export function haversineKm(
   if (km < 0.1) return 0.1;
   return Math.round(km * 10) / 10;
 }
+
+/** Default candidate / discovery origin — Connaught Place area, Delhi. */
+export const DELHI_ORIGIN = {
+  city: 'Delhi',
+  state: 'Delhi',
+  country: 'India',
+  latitude: 28.6139,
+  longitude: 77.209,
+} as const;
+
+export function resolveSearchOrigin(input?: {
+  lat?: number;
+  lng?: number;
+}): { latitude: number; longitude: number; isDefault: boolean } {
+  if (
+    typeof input?.lat === 'number' &&
+    Number.isFinite(input.lat) &&
+    typeof input?.lng === 'number' &&
+    Number.isFinite(input.lng)
+  ) {
+    return { latitude: input.lat, longitude: input.lng, isDefault: false };
+  }
+  return {
+    latitude: DELHI_ORIGIN.latitude,
+    longitude: DELHI_ORIGIN.longitude,
+    isDefault: true,
+  };
+}

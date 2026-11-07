@@ -62,11 +62,17 @@ function resolveCategory(
 }
 
 function pickLocation(ctx: SeedContext, index: number, rng: () => number): SeedLocationNode {
+  const delhiAreas = ctx.areas.filter((a) => (a.cityName ?? '').toLowerCase() === 'delhi');
+  const delhiCities = ctx.cities.filter((c) => c.name.toLowerCase() === 'delhi');
+  // Default marketplace location: Delhi (~65%), then other priority metros.
+  if (rng() < 0.65) {
+    if (delhiAreas.length) return delhiAreas[index % delhiAreas.length]!;
+    if (delhiCities.length) return delhiCities[index % delhiCities.length]!;
+  }
   const priorityAreas = ctx.areas.filter((a) =>
     (PRIORITY_CITY_NAMES as readonly string[]).includes(a.cityName ?? ''),
   );
   const pool = priorityAreas.length > 0 ? priorityAreas : ctx.areas.length > 0 ? ctx.areas : ctx.cities;
-  // Bias ~70% to priority metros
   if (priorityAreas.length > 0 && rng() < 0.7) {
     return priorityAreas[index % priorityAreas.length]!;
   }
@@ -232,6 +238,8 @@ export async function seedJobs(ctx: SeedContext): Promise<void> {
             country: area.countryName ?? 'India',
             area: area.type === 'area' ? area.name : '',
             displayName: area.displayName ?? area.name,
+            latitude: area.latitude ?? 28.6139,
+            longitude: area.longitude ?? 77.209,
           },
           workMode,
           employmentType,
@@ -251,7 +259,9 @@ export async function seedJobs(ctx: SeedContext): Promise<void> {
             'Graduate',
             '',
           ]),
-          genderPreference: 'any',
+          genderPreference: (['any', 'any', 'male', 'female', 'any'] as const)[i % 5]!,
+          contactPhone: `9${String(800000000 + i).slice(0, 9)}`,
+          contactWhatsapp: `9${String(900000000 + i).slice(0, 9)}`,
           benefits: pickN(rng, BENEFITS_POOL, intBetween(rng, 2, 5)),
           applicationDeadline:
             status === 'published' ? daysFromNow(intBetween(rng, 5, 40)) : undefined,

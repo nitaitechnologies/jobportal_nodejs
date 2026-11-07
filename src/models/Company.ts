@@ -41,6 +41,7 @@ const companySchema = new Schema(
       default: '',
     },
     contactPhone: { type: String, trim: true, default: '' },
+    contactWhatsapp: { type: String, trim: true, default: '' },
     socialLinks: { type: socialLinksSchema, default: () => ({}) },
     /** Company-level benefits shown on public profile (sheet 138). */
     benefits: {

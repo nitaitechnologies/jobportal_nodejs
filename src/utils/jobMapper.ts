@@ -52,6 +52,8 @@ export interface JobLike {
   workingDays?: string[] | null;
   workingHours?: string | null;
   genderPreference?: string | null;
+  contactPhone?: string | null;
+  contactWhatsapp?: string | null;
   benefits?: string[] | null;
   incentives?: boolean | null;
   interviewProcess?: string | null;
@@ -97,6 +99,7 @@ export interface JobCompanySummary {
   verified?: boolean;
   /** Present on public job detail when employer published a contact number. */
   contactPhone?: string;
+  contactWhatsapp?: string;
 }
 
 function mapLocation(location?: JobLocationLike | null) {
@@ -216,9 +219,17 @@ export function mapPublicJob(
     category?: JobCategorySummary | null;
     company?: JobCompanySummary | null;
     distanceKm?: number | null;
+    contactPhone?: string | null;
+    contactWhatsapp?: string | null;
   },
 ) {
   const core = mapCoreJob(job);
+  const contactPhone =
+    (extras?.contactPhone ?? job.contactPhone ?? extras?.company?.contactPhone ?? '').trim() ||
+    undefined;
+  const contactWhatsapp =
+    (extras?.contactWhatsapp ?? job.contactWhatsapp ?? extras?.company?.contactWhatsapp ?? '').trim() ||
+    contactPhone;
   return {
     id: core.id,
     title: core.title,
@@ -242,6 +253,7 @@ export function mapPublicJob(
     shift: core.shift,
     workingDays: core.workingDays,
     workingHours: core.workingHours,
+    genderPreference: core.genderPreference,
     benefits: core.benefits,
     incentives: core.incentives,
     interviewProcess: core.interviewProcess,
@@ -253,6 +265,10 @@ export function mapPublicJob(
     urgent: core.urgent,
     distanceKm: extras?.distanceKm ?? null,
     views: core.views,
+    applicationsCount: core.applicationsCount,
+    applicantCount: core.applicationsCount,
+    contactPhone,
+    contactWhatsapp,
     publishedAt: core.publishedAt,
     company: extras?.company
       ? {
@@ -265,7 +281,8 @@ export function mapPublicJob(
           headquarters: extras.company.headquarters ?? '',
           verificationStatus: extras.company.verificationStatus ?? 'unverified',
           verified: extras.company.verificationStatus === 'verified',
-          contactPhone: extras.company.contactPhone?.trim() || undefined,
+          contactPhone: extras.company.contactPhone?.trim() || contactPhone,
+          contactWhatsapp: extras.company.contactWhatsapp?.trim() || contactWhatsapp,
         }
       : null,
     safetyHints: computeJobSafetyHints({
@@ -305,8 +322,17 @@ export function mapPublicJobSummary(
     company?: JobCompanySummary | null;
     location?: JobLocationSummary | null;
     distanceKm?: number | null;
+    contactPhone?: string | null;
+    contactWhatsapp?: string | null;
   },
 ) {
+  const applicationsCount = job.applicationsCount ?? 0;
+  const contactPhone =
+    (extras?.contactPhone ?? job.contactPhone ?? extras?.company?.contactPhone ?? '').trim() ||
+    undefined;
+  const contactWhatsapp =
+    (extras?.contactWhatsapp ?? job.contactWhatsapp ?? extras?.company?.contactWhatsapp ?? '').trim() ||
+    contactPhone;
   return {
     id: job._id.toString(),
     title: job.title,
@@ -333,6 +359,11 @@ export function mapPublicJobSummary(
     featured: Boolean(job.featured),
     urgent: Boolean(job.urgent),
     distanceKm: extras?.distanceKm ?? null,
+    applicationsCount,
+    applicantCount: applicationsCount,
+    genderPreference: job.genderPreference ?? 'any',
+    contactPhone,
+    contactWhatsapp,
     publishedAt: job.publishedAt ?? null,
     deadline: job.applicationDeadline ?? null,
     expiresAt: job.expiresAt ?? null,
@@ -346,6 +377,8 @@ export function mapPublicJobSummary(
           industry: extras.company.industry ?? '',
           verificationStatus: extras.company.verificationStatus ?? 'unverified',
           verified: extras.company.verificationStatus === 'verified',
+          contactPhone: extras.company.contactPhone?.trim() || contactPhone,
+          contactWhatsapp: extras.company.contactWhatsapp?.trim() || contactWhatsapp,
         }
       : null,
     safetyHints: computeJobSafetyHints({

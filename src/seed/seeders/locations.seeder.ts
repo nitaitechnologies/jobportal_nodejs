@@ -43,6 +43,8 @@ async function upsertLocation(input: {
     parentId: (doc.parentId as import('mongoose').Types.ObjectId | null) ?? null,
     countryCode: doc.countryCode || undefined,
     stateCode: doc.stateCode || undefined,
+    latitude: typeof doc.latitude === 'number' ? doc.latitude : undefined,
+    longitude: typeof doc.longitude === 'number' ? doc.longitude : undefined,
   };
 }
 

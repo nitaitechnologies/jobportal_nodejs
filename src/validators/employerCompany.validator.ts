@@ -80,6 +80,14 @@ export const companyProfileUpdateSchema = z
         message: 'Phone must be a valid 10-digit mobile number',
       })
       .optional(),
+    contactWhatsapp: z
+      .string()
+      .trim()
+      .transform((value) => (value ? normalizePhone(value) : ''))
+      .refine((value) => value === '' || isValidPhone(value), {
+        message: 'WhatsApp must be a valid 10-digit mobile number',
+      })
+      .optional(),
     socialLinks: socialLinksSchema.optional(),
     logo: z.string().trim().max(500).optional(),
     coverImage: z.string().trim().max(500).optional(),

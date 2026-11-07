@@ -43,7 +43,7 @@ import { companyUsesPackageWallets } from './cityPackage.service';
 import { walletService } from './wallet.service';
 import { resolveCreditCosts } from './creditCatalog.service';
 import { resolveJobExpiresAt, addDays } from '../utils/jobListingExpiry';
-import { haversineKm } from '../utils/geo';
+import { haversineKm, resolveSearchOrigin, DELHI_ORIGIN } from '../utils/geo';
 import { scoreJobMatch } from '../utils/matchScore';
 import { placesService, type ResolvedPlace } from './places.service';
 import type {
@@ -99,6 +99,8 @@ type JobDocument = mongoose.Document & {
   workingDays?: string[];
   workingHours?: string;
   genderPreference?: string;
+  contactPhone?: string;
+  contactWhatsapp?: string;
   benefits: string[];
   incentives?: boolean;
   interviewProcess?: string;
@@ -306,6 +308,22 @@ async function loadCategoryMap(
   );
 }
 
+
+function buildGenderPreferenceFilter(raw?: string): Record<string, unknown> | null {
+  if (!raw?.trim()) return null;
+  const values = raw
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => item === 'male' || item === 'female' || item === 'any');
+  if (!values.length) return null;
+  if (values.includes('any') && values.length === 1) {
+    return { genderPreference: 'any' };
+  }
+  const prefs = values.filter((item) => item !== 'any');
+  if (!prefs.length) return null;
+  return { genderPreference: { $in: prefs } };
+}
+
 async function loadCompanyMap(
   companyIds: mongoose.Types.ObjectId[],
 ): Promise<Map<string, JobCompanySummary>> {
@@ -313,7 +331,7 @@ async function loadCompanyMap(
     return new Map();
   }
   const companies = await Company.find({ _id: { $in: companyIds } }).select(
-    'name slug logo industry companySize headquarters verificationStatus status',
+    'name slug logo industry companySize headquarters verificationStatus status contactPhone contactWhatsapp',
   );
   return new Map(
     companies.map((company) => [
@@ -327,6 +345,8 @@ async function loadCompanyMap(
         companySize: company.companySize ?? null,
         headquarters: company.headquarters ?? '',
         verificationStatus: company.verificationStatus,
+        contactPhone: company.contactPhone?.trim() || undefined,
+        contactWhatsapp: company.contactWhatsapp?.trim() || undefined,
       },
     ]),
   );
@@ -611,6 +631,12 @@ function applyEditableFields(
   }
   if ('genderPreference' in input && input.genderPreference !== undefined) {
     job.genderPreference = input.genderPreference;
+  }
+  if ('contactPhone' in input && input.contactPhone !== undefined) {
+    job.contactPhone = input.contactPhone ?? '';
+  }
+  if ('contactWhatsapp' in input && input.contactWhatsapp !== undefined) {
+    job.contactWhatsapp = input.contactWhatsapp ?? '';
   }
   if ('benefits' in input && input.benefits !== undefined) {
     job.benefits = input.benefits;
@@ -944,6 +970,8 @@ export class JobService {
       workingDays: input.workingDays ?? [],
       workingHours: input.workingHours ?? '',
       genderPreference: input.genderPreference,
+      contactPhone: input.contactPhone ?? '',
+      contactWhatsapp: input.contactWhatsapp ?? '',
       benefits: input.benefits,
       incentives: input.incentives ?? false,
       interviewProcess: input.interviewProcess ?? '',
@@ -1917,16 +1945,16 @@ export class JobService {
         ? { applicationMethod: { $ne: 'platform' } }
         : null,
       fresherResolved.extraFilter ?? null,
+      buildGenderPreferenceFilter(query.genderPreference),
     );
 
     const sort = resolvePublicSort(query.sort, hasKeyword);
     const skip = (page - 1) * limit;
-    const origin =
-      query.lat !== undefined && query.lng !== undefined
-        ? { latitude: query.lat, longitude: query.lng }
-        : null;
+    const resolvedOrigin = resolveSearchOrigin({ lat: query.lat, lng: query.lng });
+    const origin = { latitude: resolvedOrigin.latitude, longitude: resolvedOrigin.longitude };
+    const hasClientOrigin = !resolvedOrigin.isDefault;
     const useGeoPool =
-      Boolean(origin) && (query.sort === 'nearest' || query.radiusKm !== undefined);
+      hasClientOrigin && (query.sort === 'nearest' || query.radiusKm !== undefined);
 
     let items;
     let total: number;
@@ -1992,7 +2020,6 @@ export class JobService {
           company: companyMap.get(item.companyId.toString()) ?? null,
           location: toLocationSummary(item, locationMap),
           distanceKm:
-            origin &&
             typeof item.location?.latitude === 'number' &&
             typeof item.location.longitude === 'number'
               ? haversineKm(origin, {
@@ -2000,6 +2027,9 @@ export class JobService {
                   longitude: item.location.longitude,
                 })
               : null,
+          contactPhone: item.contactPhone || companyMap.get(item.companyId.toString())?.contactPhone,
+          contactWhatsapp:
+            item.contactWhatsapp || companyMap.get(item.companyId.toString())?.contactWhatsapp,
         }),
       ),
       pagination: {
@@ -2011,6 +2041,12 @@ export class JobService {
       meta: {
         sort: query.sort,
         q: query.q ?? null,
+        origin: {
+          latitude: origin.latitude,
+          longitude: origin.longitude,
+          city: hasClientOrigin ? undefined : DELHI_ORIGIN.city,
+          default: resolvedOrigin.isDefault,
+        },
       },
     };
   }
@@ -2059,16 +2095,13 @@ export class JobService {
       ? await Category.findById(job.categoryId).select('name slug')
       : null;
 
-    const contactPhone = company.contactPhone?.trim() || '';
-    const origin =
-      typeof geo?.lat === 'number' &&
-      Number.isFinite(geo.lat) &&
-      typeof geo?.lng === 'number' &&
-      Number.isFinite(geo.lng)
-        ? { latitude: geo.lat, longitude: geo.lng }
-        : null;
+    const contactPhone =
+      (job.contactPhone?.trim() || company.contactPhone?.trim() || '');
+    const contactWhatsapp =
+      (job.contactWhatsapp?.trim() || company.contactWhatsapp?.trim() || contactPhone);
+    const resolvedOrigin = resolveSearchOrigin({ lat: geo?.lat, lng: geo?.lng });
+    const origin = { latitude: resolvedOrigin.latitude, longitude: resolvedOrigin.longitude };
     const distanceKm =
-      origin &&
       typeof job.location?.latitude === 'number' &&
       typeof job.location.longitude === 'number'
         ? haversineKm(origin, {
@@ -2092,7 +2125,10 @@ export class JobService {
           headquarters: company.headquarters ?? '',
           verificationStatus: company.verificationStatus,
           contactPhone: contactPhone || undefined,
+          contactWhatsapp: contactWhatsapp || undefined,
         },
+        contactPhone: contactPhone || undefined,
+        contactWhatsapp: contactWhatsapp || undefined,
         distanceKm,
       }),
     };
