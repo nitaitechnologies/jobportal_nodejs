@@ -31,6 +31,7 @@ import type {
   AdminAnalyticsOverviewQuery,
   AdminAnalyticsPagedQuery,
 } from '../validators/analytics.validator';
+import { settingsService } from './settings.service';
 
 const SENSITIVE_META_KEYS = new Set([
   'password',
@@ -198,7 +199,6 @@ export async function trackAnalyticsEvent(input: TrackAnalyticsEventInput) {
 
 export async function trackSafely(input: TrackAnalyticsEventInput): Promise<void> {
   try {
-    const { settingsService } = await import('./settings.service');
     const enabled = await settingsService.getBoolean('analytics.enabled', true);
     if (!enabled) {
       return;

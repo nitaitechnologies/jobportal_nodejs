@@ -139,7 +139,8 @@ export const employerCandidateSavedListQuerySchema = z
     folderId: objectIdSchema.optional(),
     tag: z.string().trim().min(1).max(40).optional(),
     page: z.coerce.number().int().min(1).default(1),
-    limit: z.coerce.number().int().min(1).max(50).default(20),
+    // Unlocks / saved lists may request a larger page (frontend uses up to 200).
+    limit: z.coerce.number().int().min(1).max(200).default(20),
   })
   .strict();
 

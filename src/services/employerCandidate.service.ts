@@ -456,6 +456,8 @@ export class EmployerCandidateService {
   async list(employer: AuthenticatedEmployer, query: EmployerCandidateQuery) {
     const entitlements = await getEmployerEntitlements(employer);
     const advanced = hasAdvancedCandidateSearch(entitlements);
+    // Basic browse/search (q, skill, location, experience, optional jobId scoring)
+    // stays available on free plans. Paid unlocks advanced filters below.
     const advancedKeys = [
       'education',
       'expectedSalaryMin',
@@ -468,8 +470,6 @@ export class EmployerCandidateService {
       'lat',
       'lng',
       'radiusKm',
-      'jobId',
-      'isFresher',
     ] as const;
     if (!advanced) {
       const used = advancedKeys.filter((key) => {
