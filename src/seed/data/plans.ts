@@ -26,7 +26,8 @@ export interface PlanSeedDef {
 export const PLAN_DEFS: PlanSeedDef[] = [
   {
     name: 'Free',
-    description: 'Get started with limited job posts for small teams. Free listings expire after 10 days.',
+    description:
+      'Create draft job posts for free. Buy a hiring plan to activate listings and reach candidates.',
     price: 0,
     billingCycle: 'monthly',
     durationDays: 30,
@@ -34,7 +35,7 @@ export const PLAN_DEFS: PlanSeedDef[] = [
     features: { featuredJobs: false, candidateContact: false, advancedCandidateSearch: false },
     limits: {
       jobPostLimit: 3,
-      activeJobLimit: 2,
+      activeJobLimit: 0,
       featuredJobLimit: 0,
       jobListingLifetimeDays: 10,
       contactUnlockLimit: 0,

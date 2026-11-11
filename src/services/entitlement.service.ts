@@ -41,7 +41,10 @@ export interface EmployerEntitlements {
   };
 }
 
-/** Sensible free-tier defaults when no paid/trial subscription is active. */
+/**
+ * Free-tier defaults when no paid/trial subscription is active.
+ * Active jobs require a paid plan — free users may save drafts only.
+ */
 export const FREE_ENTITLEMENTS: Omit<
   EmployerEntitlements,
   'usage' | 'subscriptionId' | 'planId' | 'startDate' | 'endDate'
@@ -55,7 +58,7 @@ export const FREE_ENTITLEMENTS: Omit<
   },
   limits: {
     jobPostLimit: 3,
-    activeJobLimit: 2,
+    activeJobLimit: 0,
     featuredJobLimit: 0,
     jobListingLifetimeDays: 10,
     contactUnlockLimit: 0,
@@ -113,6 +116,61 @@ export async function countActiveJobs(companyId: string): Promise<number> {
     deletedAt: null,
     status: { $in: [...ACTIVE_JOB_STATUSES] },
   });
+}
+
+export async function countPublishedJobs(companyId: string): Promise<number> {
+  await markExpiredJobsForCompany(companyId);
+  return Job.countDocuments({
+    companyId: new mongoose.Types.ObjectId(companyId),
+    deletedAt: null,
+    status: 'published',
+  });
+}
+
+/**
+ * Resolve how many published (live) jobs this company may keep visible.
+ * Zero-price / named Free plans never grant live Active slots.
+ */
+export async function getCompanyActiveJobLimit(companyId: string): Promise<number> {
+  const subscription = await findCurrentCompanySubscription(companyId);
+  if (!subscription || !isSubscriptionCurrentlyActive(subscription)) {
+    return FREE_ENTITLEMENTS.limits.activeJobLimit;
+  }
+  const planName = String(subscription.plan ?? '').trim().toLowerCase();
+  const amount = Number(subscription.amount ?? 0);
+  if (planName === 'free' || amount <= 0) {
+    return FREE_ENTITLEMENTS.limits.activeJobLimit;
+  }
+  const limits = normalizeLimits(subscription.limits as Record<string, unknown> | undefined);
+  return Math.max(0, limits.activeJobLimit);
+}
+
+/**
+ * Pause published jobs that exceed the company's active-job quota
+ * (e.g. free tier with limit 0, or expired paid plan).
+ * Keeps the newest listings live first.
+ */
+export async function enforcePublishedJobQuota(companyId: string): Promise<number> {
+  await markExpiredJobsForCompany(companyId);
+  const limit = await getCompanyActiveJobLimit(companyId);
+  const companyOid = new mongoose.Types.ObjectId(companyId);
+  const published = await Job.find({
+    companyId: companyOid,
+    deletedAt: null,
+    status: 'published',
+  })
+    .sort({ publishedAt: -1, createdAt: -1 })
+    .select('_id')
+    .lean();
+
+  if (published.length <= limit) return 0;
+
+  const overflowIds = published.slice(limit).map((row) => row._id);
+  const result = await Job.updateMany(
+    { _id: { $in: overflowIds } },
+    { $set: { status: 'paused' } },
+  );
+  return result.modifiedCount ?? 0;
 }
 
 /**
@@ -240,12 +298,12 @@ export async function getEmployerEntitlements(
 
   const limits = normalizeLimits(subscription.limits as Record<string, unknown> | undefined);
 
-  // Free / zero-price plans without an explicit lifetime still get 10-day listings.
-  if (
-    (subscription.plan === 'free' || Number(subscription.amount ?? 0) === 0) &&
-    !(limits.jobListingLifetimeDays > 0)
-  ) {
-    limits.jobListingLifetimeDays = FREE_ENTITLEMENTS.limits.jobListingLifetimeDays;
+  // Free / zero-price plans: no live Active slots; keep draft posts only.
+  if (subscription.plan === 'free' || Number(subscription.amount ?? 0) === 0) {
+    limits.activeJobLimit = FREE_ENTITLEMENTS.limits.activeJobLimit;
+    if (!(limits.jobListingLifetimeDays > 0)) {
+      limits.jobListingLifetimeDays = FREE_ENTITLEMENTS.limits.jobListingLifetimeDays;
+    }
   }
 
   const featuresRaw = (subscription.features ?? {}) as Record<string, unknown>;

@@ -35,7 +35,14 @@ import {
   resolvePublicSort,
   sanitizeTextSearch,
 } from '../utils/jobSearchQuery';
-import { getEmployerEntitlements, markExpiredJobsForCompany, FREE_ENTITLEMENTS, canFeatureJob } from './entitlement.service';
+import {
+  getEmployerEntitlements,
+  markExpiredJobsForCompany,
+  enforcePublishedJobQuota,
+  countPublishedJobs,
+  FREE_ENTITLEMENTS,
+  canFeatureJob,
+} from './entitlement.service';
 import { trackSafely } from './analytics.service';
 import { jobAlertService } from './jobAlert.service';
 import { settingsService } from './settings.service';
@@ -1006,6 +1013,8 @@ export class JobService {
 
   async listEmployer(employer: AuthenticatedEmployer, query: EmployerJobQuery) {
     await markExpiredJobsForCompany(employer.companyId);
+    // Free / over-quota companies must not keep live Active jobs without a plan slot.
+    await enforcePublishedJobQuota(employer.companyId);
 
     const filter: Record<string, unknown> = {
       employerId: new mongoose.Types.ObjectId(employer.employerId),
@@ -1414,6 +1423,25 @@ export class JobService {
     if (job.applicationDeadline && job.applicationDeadline.getTime() <= Date.now()) {
       throw new AppError('Cannot resume a job past its deadline', HTTP_STATUS.CONFLICT);
     }
+
+    const entitlements = await getEmployerEntitlements(employer);
+    const packageWallets = await companyUsesPackageWallets(employer.companyId);
+    if (!packageWallets) {
+      const publishedCount = await countPublishedJobs(employer.companyId);
+      if (publishedCount >= entitlements.limits.activeJobLimit) {
+        throw new AppError(
+          'Active job limit reached for your current subscription',
+          HTTP_STATUS.FORBIDDEN,
+          [
+            {
+              path: 'subscription',
+              message: `activeJobLimit is ${entitlements.limits.activeJobLimit}`,
+            },
+          ],
+        );
+      }
+    }
+
     job.status = 'published';
     await job.save();
 
